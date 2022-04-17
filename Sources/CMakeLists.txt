@@ -1,0 +1,2 @@
+ADD_SUBDIRECTORY("macMiniDump")
+ADD_SUBDIRECTORY("dumpTester")
