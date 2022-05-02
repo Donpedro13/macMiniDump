@@ -40,24 +40,36 @@ struct SegmentVMAddr {
 	uint64_t unused = 0;
 };
 
-// TODO x86
 enum class RegSetKind : uint32_t {
+#ifdef __x86_64__
+	GPR = 4,
+	EXC = 6
+#elif defined __arm64__
 	GPR = 6,
 	EXC = 7
+#endif
 };
 
 struct GPR {
 	RegSetKind kind;
 	uint32_t nWordCount;
 	
+#ifdef __x86_64__
+	x86_thread_state64_t gpr;
+#elif defined __arm64__
 	arm_thread_state64_t gpr;
+#endif
 };
 
 struct EXC {
 	RegSetKind kind;
 	uint32_t nWordCount;
 	
+#ifdef __x86_64__
+	x86_exception_state64_t exc;
+#elif defined __arm64__
 	arm_exception_state64_t exc;
+#endif
 };
 
 extern const char* AddrableBitsOwner;

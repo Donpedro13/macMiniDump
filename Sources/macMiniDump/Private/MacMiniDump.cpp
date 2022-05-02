@@ -247,15 +247,26 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 				thread_resume (threads[i]);
 		};
 		
-		// TODO x86-64
+#ifdef __x86_64__
+		x86_thread_state64_t ts;
+		x86_exception_state64_t es;
+		mach_msg_type_number_t gprCount = x86_THREAD_STATE64_COUNT;
+		mach_msg_type_number_t excCount = x86_EXCEPTION_STATE64_COUNT;
+		const thread_state_flavor_t gprFlavor = x86_THREAD_STATE64;
+		const thread_state_flavor_t excFlavor = x86_EXCEPTION_STATE64;
+#elif defined __arm64__
 		arm_thread_state64_t ts;
-		mach_msg_type_number_t count = ARM_THREAD_STATE64_COUNT;
-		if (thread_get_state (threads[i], ARM_THREAD_STATE64, (thread_state_t)&ts, &count) != KERN_SUCCESS)
-			continue;
-		
 		arm_exception_state64_t es;
-		count = ARM_EXCEPTION_STATE64_COUNT;
-		if (thread_get_state (threads[i], ARM_EXCEPTION_STATE64, (thread_state_t)&es, &count) != KERN_SUCCESS)
+		mach_msg_type_number_t gprCount = ARM_THREAD_STATE64_COUNT;
+		mach_msg_type_number_t excCount = ARM_EXCEPTION_STATE64_COUNT;
+		const thread_state_flavor_t gprFlavor = ARM_THREAD_STATE64;
+		const thread_state_flavor_t excFlavor = ARM_EXCEPTION_STATE64;
+#endif
+		
+		if (thread_get_state (threads[i], gprFlavor, (thread_state_t)&ts, &gprCount) != KERN_SUCCESS)
+			continue;
+
+		if (thread_get_state (threads[i], excFlavor, (thread_state_t)&es, &excCount) != KERN_SUCCESS)
 			continue;
 		
 		MachOCore::GPR gpr;
