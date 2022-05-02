@@ -316,19 +316,19 @@ bool AddSegmentsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder
 	}
 	
 	// TODO remove
-	ModuleList modules (taskPort);
+	/*ModuleList modules (taskPort);
 	if (!modules.IsValid ())
 		return false;
 	
 	std::vector<std::pair<uint64_t, uint64_t>> relevantRanges;
 	for (size_t i = 0; i < modules.GetSize (); ++i) {
 		const ModuleList::ModuleInfo& moduleInfo = modules.GetModuleInfo (i);
-		/*const char* prefix = "/usr/lib";
+		const char* prefix = "/usr/lib";
 		if (strncmp (prefix, moduleInfo.filePath.c_str (), strlen (prefix)) != 0)
-			continue;*/
+			continue;
 		
-		/*if (strstr (moduleInfo.filePath.c_str (), "libsystem_c.dylib") == 0)
-			continue;*/
+		if (strstr (moduleInfo.filePath.c_str (), "libsystem_c.dylib") == 0)
+			continue;
 
 		//relevantRanges.push_back({moduleInfo.loadAddress, moduleInfo.);
 		
@@ -372,8 +372,7 @@ bool AddSegmentsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder
 	//if (addedAddresses.size() != relevantAddresses.size())
 	//	return false;
 	
-	printf ("Total written: %zu\n", writtenTotal);
-	
+	printf ("Total written: %zu\n", writtenTotal);*/	
 	
 	return true;
 }
