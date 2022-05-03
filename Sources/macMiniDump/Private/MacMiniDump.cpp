@@ -192,7 +192,8 @@ bool AddPayloadsAndWrite (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuild
 	// Addressable bits of the address space of the process
 	uint32_t nAddrabbleBits = 0;
 	size_t len = sizeof nAddrabbleBits;
-	  if (::sysctlbyname("machdep.virtual_address_size", &nAddrabbleBits, &len, NULL, 0) != 0)
+	  if (  (::sysctlbyname ("machdep.virtual_address_size",     &nAddrabbleBits, &len, NULL, 0) != 0)
+	  	 && (::sysctlbyname ("machdep.cpu.address_bits.virtual", &nAddrabbleBits, &len, NULL, 0) != 0) )
 		  return false;
 	
 	MachOCore::AddrableBitsInfo abInfo = {};
