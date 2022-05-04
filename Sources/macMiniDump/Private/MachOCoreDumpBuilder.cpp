@@ -24,8 +24,13 @@ MachOCoreDumpBuilder::MachOCoreDumpBuilder (): m_loadCommandsFinalized (false)
 #elif defined __arm64__
 	CPU_TYPE_ARM64;
 #endif
-	
-	m_header.cpusubtype = 0;	// TODO
+
+#ifdef __x86_64__
+	m_header.cpusubtype = CPU_SUBTYPE_I386_ALL;
+#elif defined __arm64__
+	m_header.cpusubtype = 0;
+#endif
+
 	m_header.filetype = MH_CORE;
 	m_header.ncmds = 0;
 	m_header.sizeofcmds = 0;
