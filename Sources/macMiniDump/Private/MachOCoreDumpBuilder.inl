@@ -36,7 +36,7 @@ bool MachOCoreDumpBuilder::AddThreadCommand (ThreadStates... threadStates)
 	
 	const size_t alignment = alignof (ThreadCommandWithThreadStates<ThreadStates...>);
 	char* pData = new (std::align_val_t (alignment)) char[rawData.thread_cmd.cmdsize];
-	memcpy(pData, &rawData, sizeof rawData);
+	memcpy(pData, &rawData, sizeof rawData - 8);	// TODO fix
 	
 	m_thread_cmds.emplace_back (std::unique_ptr<thread_command> (reinterpret_cast<thread_command*> (pData)));
 	
