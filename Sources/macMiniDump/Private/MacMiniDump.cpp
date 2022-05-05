@@ -264,7 +264,7 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 	
 	// If the task is not suspended, there is a race condition: threads might start and end in the meantime
 	// We have to handle this situation (by gracefully handling errors)
-	for (int i = nThreads; i >= 0; --i) {
+	for (int i = 0; i < nThreads; ++i) {
 		const bool suspend = threads[i] != thisThread;
 
 		if (suspend) {
@@ -378,10 +378,16 @@ static uint64_t Deref (mach_port_t taskPort, const uint64_t ptr);
 
 static void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer, WalkStackVisitorFn visitor, void* payload)
 {
+	
 	std::cout << "Start walking from base pointer 0x"
 			  << std::hex << basePointer 
 			  << " and instruction pointer 0x"
 			  << std::hex << instructionPointer << std::endl;
+	
+#ifdef __arm64__
+	// Clear PAC bits from the pointer
+	asm ("xpaci %0" : "+r" (instructionPointer));
+#endif
 
 	visitor(taskPort, instructionPointer, payload);
 
@@ -392,6 +398,11 @@ static void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64
 	{
 		upperFunctionBasePointer = Deref(taskPort, basePointer);
 		upperFunctionReturnAddress = Deref(taskPort, basePointer + BOLDLY_ASSUMED_ADDRESS_LENGTH_ON_ALL_PLATFOMRS_IN_BYTES);
+		
+#ifdef __arm64__
+	// Clear PAC bits from the pointer
+	asm ("xpaci %0" : "+r" (upperFunctionReturnAddress));
+#endif
 
 		std::cout 
 			<< "Upper function base pointer is 0x"
@@ -434,7 +445,7 @@ static uint64_t GetBasePointer (const MachOCore::GPR& gpr)
 #ifdef __x86_64__
 	return gpr.gpr.__rbp;
 #elif defined __arm64__
-	return gpr.gpr.__lr;
+	return gpr.gpr.__fp;
 #endif
 }
 
