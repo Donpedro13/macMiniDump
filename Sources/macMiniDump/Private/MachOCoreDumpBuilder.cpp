@@ -1,6 +1,7 @@
 #include "MachOCoreDumpBuilder.hpp"
 
 #include <cmath>
+#include <iostream>
 
 namespace MMD {
 namespace {
@@ -97,7 +98,16 @@ bool MachOCoreDumpBuilder::Build (IRandomAccessBinaryOStream* pOStream)
 
 		size_t offset = 0;
 		for (size_t i = 0; i < iters; ++i) {
-			if (!WriteToOStream (sc.second->GetDataPtr ()->Get (offset, chunkSize), chunkSize, pOStream))
+			const char * data = sc.second->GetDataPtr ()->Get (offset, chunkSize);
+
+			if(data == nullptr) {
+				std::cout << "Warning! data is null, aborting saving this segment." << std::endl;
+				break;
+			} else {
+				std::cout << "+" << std::flush;
+			}
+
+			if (!WriteToOStream (data, chunkSize, pOStream))
 				return false;
 			
 			offset += chunkSize;
@@ -283,6 +293,8 @@ segment_command_64* MachOCoreDumpBuilder::GetSegmentCommand (size_t index)
 
 bool MachOCoreDumpBuilder::WriteToOStream (const void* pData, size_t size, IRandomAccessBinaryOStream* pOStream)
 {
+	assert(!(pData == NULL && size > 0));
+
 	// Debug feature: lLet's check if we would overwrite parts or not
 #ifdef _DEBUG
 	size_t start = pOStream->GetPosition ();

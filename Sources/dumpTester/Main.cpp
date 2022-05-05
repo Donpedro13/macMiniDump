@@ -20,7 +20,12 @@ void Function3 ()
 	volatile int local = global3 * 2;
 	std::cout << local << std::endl;
 	
-	sleep (50);
+	std::cout << "Sleeping..." << std::endl;
+
+	for (int i = 50; i > 0; i--) {
+		sleep(1);
+		std::cout << i << " " << std::flush;
+	}
 }
 
 void Function2 ()
@@ -38,12 +43,18 @@ void Function1 ()
 	
 	sleep (2);
 	
-	MMD::FileOStream fos ("/Volumes/Dev/Dev/own.core");
-	MMD::MiniDumpWriteDump (mach_task_self (), &fos);
+	MMD::FileOStream fos ("/usr/local/src/macMiniDump/dump/own.core");
+	
+
+	if(!MMD::MiniDumpWriteDump (mach_task_self (), &fos)) {
+		std::cout << "MMD::MiniDumpWriteDump() has returned false" << std::endl;
+	} else {
+		std::cout << "Dump written." << std::endl;
+	}
 	
 	global3 = 2;
-	
-	t1.join ();
+
+	std::exit(0);
 }
 
 int main ()
