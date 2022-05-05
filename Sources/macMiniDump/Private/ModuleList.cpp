@@ -4,6 +4,7 @@
 #include <mach-o/loader.h>
 
 #include <array>
+#include <iostream>
 
 #include "ReadProcessMemory.hpp"
 
@@ -129,14 +130,25 @@ ModuleList::ModuleList (mach_port_t taskPort)
 				
 				return;
 			}
+			
+			uint64_t loadAddress = pImageInfoArray[i].imageLoadAddress;
+			std::vector<ModuleList::SegmentInfo> segments = GetSegmentsOfModule (pRawBytes.get ());
+			for (auto& si : segments) {
+				// HACK
+				if (strcmp (si.segmentName, "__TEXT") == 0) {
+					si.address = pImageInfoArray[i].imageLoadAddress;
+					
+					break;
+				}
+			}
 
 			std::array<char, 16> rawUUID = GetUUIDOfModule (pRawBytes.get ());
 			uuid_t uuid = {};
 			memcpy(&uuid, &rawUUID, sizeof uuid);
-			m_moduleInfos.emplace_back (pImageInfoArray[i].imageLoadAddress,
+			m_moduleInfos.emplace_back (loadAddress,
 										&uuid,
 										imagePath,
-										GetSegmentsOfModule (pRawBytes.get ()),
+										segments,
 										std::move (pRawBytes));
 		}
 	}

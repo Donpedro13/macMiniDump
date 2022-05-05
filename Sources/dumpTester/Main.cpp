@@ -13,6 +13,14 @@ const std::string global1 = "This is a string!";
 std::string global2 = "Another string!";
 int global3 = 42;
 
+volatile int a = 0;
+
+__attribute__((noinline)) void BusyWait ()
+{
+	for (size_t i = 0; i < 500'000'000'0; ++i)
+		a *= 2;
+}
+
 void Function3 ()
 {
 	std::cout << global3 << std::endl;
@@ -20,7 +28,8 @@ void Function3 ()
 	volatile int local = global3 * 2;
 	std::cout << local << std::endl;
 	
-	sleep (50);
+	//sleep (50);
+	BusyWait ();
 }
 
 void Function2 ()

@@ -113,11 +113,15 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 		const ModuleList::ModuleInfo& moduleInfo = modules.GetModuleInfo (i);
 		modulePathsSize += moduleInfo.filePath.length () + sizeof '\0';
 		
+		std::cout << "Image" << "\n" << "\t" << moduleInfo.filePath << "\n\tLoad address: " << moduleInfo.loadAddress << "\n\tSegment Count: " << moduleInfo.segments.size () << std::endl;
+		
 		const ModuleList::Segments& segments = moduleInfo.segments;
 		for (const auto& section : segments) {
 			MachOCore::SegmentVMAddr newVMAddr = {};
 			strncpy (newVMAddr.segname, section.segmentName, sizeof section.segmentName);
 			newVMAddr.vmaddr = section.address;
+			
+			std::cout << "Segment" << "\n" << "\t" << section.segmentName << "\n\tAddress: " << section.address << std::endl;
 			
 			segmentVMAddrs.push_back (newVMAddr);
 			++nSegments;
@@ -141,7 +145,6 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	memcpy (&result[0], &header, sizeof header);
 	offset += sizeof header;
 	
-	// Image entries follow
 	size_t currModulePathOffset = payloadOffset + payloadSize - modulePathsSize;
 	size_t currSegAddrsOffset = currModulePathOffset - segmentEntriesSize;
 	size_t currImageEntryMemOffset = offset;
@@ -154,7 +157,7 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 		imageEntry.load_address = moduleInfo.loadAddress;
 		imageEntry.seg_addrs_offset = currSegAddrsOffset;
 		imageEntry.segment_count = moduleInfo.segments.size ();
-		imageEntry.reserved = 1;	// TODO this should only be set to 1 for modules that are currently executingž
+		imageEntry.reserved = 1;	// TODO this should only be set to 1 for modules that are currently executing
 		
 		memcpy(&result[currImageEntryMemOffset], &imageEntry, sizeof imageEntry);
 		
@@ -269,7 +272,7 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 
 		if (thread_get_state (threads[i], excFlavor, (thread_state_t)&es, &excCount) != KERN_SUCCESS)
 			continue;
-		
+
 		MachOCore::GPR gpr;
 		gpr.kind = MachOCore::RegSetKind::GPR;
 		gpr.nWordCount = sizeof ts / sizeof (uint32_t);
