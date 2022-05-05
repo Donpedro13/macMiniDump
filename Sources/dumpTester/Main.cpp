@@ -47,12 +47,18 @@ void Function1 ()
 	
 	sleep (2);
 	
-	MMD::FileOStream fos ("/Volumes/Dev/Dev/own.core");
-	MMD::MiniDumpWriteDump (mach_task_self (), &fos);
+	MMD::FileOStream fos ("/usr/local/src/macMiniDump/dump/own.core");
+	
+
+	if(!MMD::MiniDumpWriteDump (mach_task_self (), &fos)) {
+		std::cout << "MMD::MiniDumpWriteDump() has returned false" << std::endl;
+	} else {
+		std::cout << "Dump written." << std::endl;
+	}
 	
 	global3 = 2;
-	
-	t1.join ();
+
+	std::exit(0);
 }
 
 int main ()
