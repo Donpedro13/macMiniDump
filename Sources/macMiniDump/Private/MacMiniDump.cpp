@@ -206,9 +206,6 @@ bool AddPayloadsAndWrite (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuild
 	return pCoreBuilder->Build (pOStream);
 }
 
-
-
-
 bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder, CrashContext* pCrashContext /*= nullptr*/)
 {
 	thread_act_port_array_t threads;
@@ -225,22 +222,85 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 	for (int i = 0; i < nThreads; ++i) {
 		const bool suspendWhileInspecting = threads[i] != thisThread;
 
-		MachOCore::ThreadInfo threadInfo(threads[i], suspendWhileInspecting);
-		if(!threadInfo.healthy) continue;
+		defer {
+			if (suspendWhileInspecting)
+				thread_resume (threads[i]);
+		};
 
-		pCoreBuilder->AddThreadCommand (threadInfo.gpr, threadInfo.exc);
+#ifdef __x86_64__
+		x86_thread_state64_t ts;
+		x86_exception_state64_t es;
+		mach_msg_type_number_t gprCount = x86_THREAD_STATE64_COUNT;
+		mach_msg_type_number_t excCount = x86_EXCEPTION_STATE64_COUNT;
+		const thread_state_flavor_t gprFlavor = x86_THREAD_STATE64;
+		const thread_state_flavor_t excFlavor = x86_EXCEPTION_STATE64;
+#elif defined __arm64__
+		arm_thread_state64_t ts;
+		arm_exception_state64_t es;
+		mach_msg_type_number_t gprCount = ARM_THREAD_STATE64_COUNT;
+		mach_msg_type_number_t excCount = ARM_EXCEPTION_STATE64_COUNT;
+		const thread_state_flavor_t gprFlavor = ARM_THREAD_STATE64;
+		const thread_state_flavor_t excFlavor = ARM_EXCEPTION_STATE64;
+#endif
 
-		MachOCore::GPRPointers pointers(threadInfo.gpr);
+		// TODO this does not work for some reason, but it should...
+		
+		// If the thread is the crashing one, start stackwalking etc. from the provided crash context
+		const pthread_t pthread = pthread_from_mach_thread_np (threads[i]);
+		uint64_t tid = 0;
+		if (pthread_threadid_np(pthread, &tid) != 0)
+			syslog (LOG_NOTICE, "Unable to get tid for thread #%d!", i);
+		
+		// TODO assume that if the target process has crashed, it's the main thread
+		// This is obviously a HACK for the time being...
+		if (pCrashContext != nullptr && /*tid == pCrashContext->crashedTID*/ i == 0) {
+			syslog (LOG_NOTICE, "Found main thread (tid %" PRIu64 " )", tid);
+			
+			memcpy (&ts, &pCrashContext->mcontext.__ss, sizeof ts);
+			memcpy (&es, &pCrashContext->mcontext.__es, sizeof es);
+		} else {
+			syslog (LOG_NOTICE, "Adding thread (tid %" PRIu64 " )", tid);
+			
+			if (thread_get_state (threads[i], gprFlavor, (thread_state_t)&ts, &gprCount) != KERN_SUCCESS)
+				continue;
 
-		// TODO: a stack tetejétől a legalsó base pointerig bemásolgatni a memória címeket
+			if (thread_get_state (threads[i], excFlavor, (thread_state_t)&es, &excCount) != KERN_SUCCESS)
+				continue;
+		}
+
+		// TODO what's up with this? When a core file of a process that has a debugger attached,
+		//   this seems to happen sometimes. Maybe we should just ignore this edge case...
+#ifdef __x86_64__
+		if (ts.__rip == 0) {
+#elif defined __arm64__
+		if (ts.__pc == 0) {
+#endif
+			syslog (LOG_WARNING, "Skipping thread #%d because pc was 0!", i);
+			
+			continue;
+		}
+
+		MachOCore::GPR gpr;
+		gpr.kind = MachOCore::RegSetKind::GPR;
+		gpr.nWordCount = sizeof ts / sizeof (uint32_t);
+		memcpy(&gpr.gpr, &ts, sizeof ts);
+		
+		MachOCore::EXC exc;
+		exc.kind = MachOCore::RegSetKind::EXC;
+		exc.nWordCount = sizeof es / sizeof (uint32_t);
+		memcpy(&exc.exc, &es, sizeof es);
+
+		pCoreBuilder->AddThreadCommand (gpr, exc);
+
+		MachOCore::GPRPointers pointers (gpr);
 
 		MMD::WalkStack::SegmentCollectorVisitor segmentVisitor (pCoreBuilder);
 		MMD::WalkStack::LastBasePointerRecorder basePointerRecorderVisitor;
 		
-		MMD::WalkStack::WalkStack(taskPort,
-				  pointers.InstructionPointer().AsUInt64(),
-				  pointers.BasePointer().AsUInt64(),
-				  { &segmentVisitor, &basePointerRecorderVisitor });
+		MMD::WalkStack::WalkStack (taskPort,
+								   pointers.InstructionPointer().AsUInt64(),
+								   pointers.BasePointer().AsUInt64(),
+								   { &segmentVisitor, &basePointerRecorderVisitor });
 
 
 		uint64_t sp = pointers.StackPointer().AsUInt64();
@@ -260,84 +320,6 @@ bool AddNotesToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 	// Payloads for these will be added later
 	pCoreBuilder->AddNoteCommand (MachOCore::AddrableBitsOwner);
 	pCoreBuilder->AddNoteCommand (MachOCore::AllImageInfosOwner);
-	
-	return true;
-}
-
-bool AddSegmentsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
-{
-	MemoryRegionList regionList (taskPort);
-	
-	for (size_t i = 0; i < regionList.GetSize (); ++i) {
-		const MemoryRegionInfo& regionInfo = regionList.GetMemoryRegionInfo (i);
-		
-		if (regionInfo.type != MemoryRegionType::Stack)
-			continue;
-
-		if(!Utils::AddSegmentCommandFromProcessMemory(pCoreBuilder, taskPort, regionInfo.prot, regionInfo.vmaddr, regionInfo.vmsize))
-		{
-			return false;
-		}
-	}
-	
-	// TODO remove
-	/*ModuleList modules (taskPort);
-	if (!modules.IsValid ())
-		return false;
-	
-	std::vector<std::pair<uint64_t, uint64_t>> relevantRanges;
-	for (size_t i = 0; i < modules.GetSize (); ++i) {
-		const ModuleList::ModuleInfo& moduleInfo = modules.GetModuleInfo (i);
-		const char* prefix = "/usr/lib";
-		if (strncmp (prefix, moduleInfo.filePath.c_str (), strlen (prefix)) != 0)
-			continue;
-		
-		if (strstr (moduleInfo.filePath.c_str (), "libsystem_c.dylib") == 0)
-			continue;
-
-		//relevantRanges.push_back({moduleInfo.loadAddress, moduleInfo.);
-		
-		for (const auto& segmentInfo : moduleInfo.segments) {
-			if (std::string (segmentInfo.segmentName) == "__TEXT") {
-				relevantRanges.push_back({segmentInfo.address, segmentInfo.size });
-				
-				if (ReadProcessMemory(taskPort, segmentInfo.address, 1) == nullptr)
-					printf ("Text section of module %s at address 0x%llx seems to be invalid!\n", moduleInfo.filePath.c_str (), segmentInfo.address);
-			}
-			
-		}
-	}
-	
-	size_t writtenTotal = 0;
-	MemoryRegionList regions (taskPort);
-	std::vector<uint64_t> addedAddresses;
-	for (size_t i = 0; i < regions.GetSize (); ++i) {
-		const MemoryRegionInfo& regionInfo = regions.GetMemoryRegionInfo (i);
-		
-		for (const auto& range : relevantRanges) {
-			if (range.first >= regionInfo.vmaddr && range.first < regionInfo.vmaddr + regionInfo.vmsize) {
-				addedAddresses.push_back (range.first);
-				writtenTotal += range.second;
-				
-				printf ("Added %llu bytes\n", range.second);
-				
-				if (!pCoreBuilder->AddSegmentCommand (range.first,
-													  regionInfo.prot,
-													  std::make_unique<DataProvider> (new ProcessMemoryReaderDataPtr (taskPort,
-																													  range.first,
-																													  range.second),
-																					  range.second)))
-				{
-					return false;
-				}
-			}
-		}
-	}
-	
-	//if (addedAddresses.size() != relevantAddresses.size())
-	//	return false;
-	
-	printf ("Total written: %zu\n", writtenTotal);*/	
 	
 	return true;
 }
@@ -399,9 +381,6 @@ bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStre
 	
 	if (!AddNotesToCore (taskPort, &coreBuilder))
 		return false;
-	
-	// if (!AddSegmentsToCore (taskPort, &coreBuilder))
-	// 	return false;
 	
 	if (!AddPayloadsAndWrite (taskPort, &coreBuilder, pOStream))
 		return false;
