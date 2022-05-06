@@ -17,7 +17,12 @@
 
 #include <mach/vm_map.h>
 #include <mach/mach_vm.h>
+#include <syslog.h>
+
+#include <inttypes.h>
 #include <iostream>
+
+#include <CoreServices/CoreServices.h>
 
 #include <unistd.h>
 
@@ -253,7 +258,7 @@ static uint64_t GetInstructionPointer (const MachOCore::GPR& gpr);
 
 // static void AddSegmentAround (uint64_t address, size_t howManyBytes);
 
-bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
+bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder, CrashContext* pCrashContext /*= nullptr*/)
 {
 	thread_act_port_array_t threads;
 	mach_msg_type_number_t nThreads;
@@ -261,6 +266,8 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 	
 	if (task_threads (taskPort, &threads, &nThreads) != KERN_SUCCESS)
 		return false;
+	
+	syslog (LOG_NOTICE, "Enumerating %d threads...", nThreads);
 	
 	// If the task is not suspended, there is a race condition: threads might start and end in the meantime
 	// We have to handle this situation (by gracefully handling errors)
@@ -293,11 +300,42 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 		const thread_state_flavor_t excFlavor = ARM_EXCEPTION_STATE64;
 #endif
 		
-		if (thread_get_state (threads[i], gprFlavor, (thread_state_t)&ts, &gprCount) != KERN_SUCCESS)
-			continue;
+		// TODO this does not work for some reason, but it should...
+		
+		// If the thread is the crashing one, start stackwalking etc. from the provided crash context
+		const pthread_t pthread = pthread_from_mach_thread_np (threads[i]);
+		uint64_t tid = 0;
+		if (pthread_threadid_np(pthread, &tid) != 0)
+			syslog (LOG_NOTICE, "Unable to get tid for thread #%d!", i);
+		
+		// TODO assume that if the target process has crashed, it's the main thread
+		// This is obviously a HACK for the time being...
+		if (pCrashContext != nullptr && /*tid == pCrashContext->crashedTID*/ i == 0) {
+			syslog (LOG_NOTICE, "Found main thread (tid %" PRIu64 " )", tid);
+			
+			memcpy (&ts, &pCrashContext->mcontext.__ss, sizeof (ts));
+			memcpy (&es, &pCrashContext->mcontext.__es, sizeof (es));
+		} else {
+			syslog (LOG_NOTICE, "Adding thread (tid %" PRIu64 " )", tid);
+			
+			if (thread_get_state (threads[i], gprFlavor, (thread_state_t)&ts, &gprCount) != KERN_SUCCESS)
+				continue;
 
-		if (thread_get_state (threads[i], excFlavor, (thread_state_t)&es, &excCount) != KERN_SUCCESS)
+			if (thread_get_state (threads[i], excFlavor, (thread_state_t)&es, &excCount) != KERN_SUCCESS)
+				continue;
+		}
+
+		// TODO what's up with this? When a core file of a process that has a debugger attached,
+		//   this seems to happen sometimes. Maybe we should just ignore this edge case...
+#ifdef __x86_64__
+		if (ts.__rip == 0) {
+#elif defined __arm64__
+		if (ts.__pc == 0) {
+#endif
+			syslog (LOG_WARNING, "Skipping thread #%d because pc was 0!", i);
+			
 			continue;
+		}
 
 		MachOCore::GPR gpr;
 		gpr.kind = MachOCore::RegSetKind::GPR;
@@ -552,23 +590,23 @@ bool AddSegmentsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder
 
 }	// namespace
 
-bool MiniDumpWriteDump (mach_port_t taskPort, FILE* pFile)
+bool MiniDumpWriteDump (mach_port_t taskPort, FILE* pFile, CrashContext* pCrashContext /*= nullptr*/)
 {
 	assert (pFile != nullptr);
 	
 	MMD::FileOStream fos (pFile);
 	
-	return MiniDumpWriteDump (taskPort, &fos);
+	return MiniDumpWriteDump (taskPort, &fos, pCrashContext);
 }
 
-bool MiniDumpWriteDump (mach_port_t taskPort, int fd)
+bool MiniDumpWriteDump (mach_port_t taskPort, int fd, CrashContext* pCrashContext /*= nullptr*/)
 {
 	MMD::FileOStream fos (fd);
 	
-	return MiniDumpWriteDump (taskPort, &fos);
+	return MiniDumpWriteDump (taskPort, &fos, pCrashContext);
 }
 
-bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStream)
+bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStream, CrashContext* pCrashContext /*= nullptr*/)
 {
 	assert (pOStream != nullptr);
 	
@@ -602,7 +640,7 @@ bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStre
 	//  * we need to update offset fields in the load commands, and payloads
 	//  * then finally, we can write out the content itself
 	MachOCoreDumpBuilder coreBuilder;
-	if (!AddThreadsToCore (taskPort, &coreBuilder))
+	if (!AddThreadsToCore (taskPort, &coreBuilder, pCrashContext))
 		return false;
 	
 	if (!AddNotesToCore (taskPort, &coreBuilder))

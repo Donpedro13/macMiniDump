@@ -5,6 +5,7 @@
 #include <thread>
 
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "MacMiniDump.hpp"
 #include "FileOStream.hpp"
@@ -28,8 +29,8 @@ void Function3 ()
 	volatile int local = global3 * 2;
 	std::cout << local << std::endl;
 	
-	//sleep (50);
-	BusyWait ();
+	sleep (50);
+	//BusyWait ();
 }
 
 void Function2 ()
@@ -41,16 +42,24 @@ void Function1 ()
 {
 	global2 = "Tee-hee";
 	
+	int fd = open ("/Volumes/Dev/Dev/own.core", O_WRONLY);
+	/*int flags = fcntl (fd, F_GETFD);
+	int res = write (fd, "a", 2);
+	printf ("%d", res);
+	printf ("%d\n", flags);*/
+	//close (fd);
+	
 	Function2 ();
 	
 	std::thread t1 (Function3);
 	
 	sleep (2);
 	
-	MMD::FileOStream fos ("/usr/local/src/macMiniDump/dump/own.core");
+	//MMD::FileOStream fos ("/Volumes/Dev/Dev/own.core");
 	
 
-	if(!MMD::MiniDumpWriteDump (mach_task_self (), &fos)) {
+	//if(!MMD::MiniDumpWriteDump (mach_task_self (), &fos)) {
+	if(!MMD::MiniDumpWriteDump (mach_task_self (), fd)) {
 		std::cout << "MMD::MiniDumpWriteDump() has returned false" << std::endl;
 	} else {
 		std::cout << "Dump written." << std::endl;

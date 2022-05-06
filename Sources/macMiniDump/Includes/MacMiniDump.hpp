@@ -4,8 +4,10 @@
 #pragma once
 
 #include <mach/port.h>
+#include <sys/types.h>
 
 #include <cstdio>
+#include <csignal>
 
 #include "IRandomAccessBinaryOStream.hpp"
 
@@ -15,9 +17,15 @@
 
 namespace MMD {
 
-bool MiniDumpWriteDump (mach_port_t taskPort, FILE* pFile);
-bool MiniDumpWriteDump (mach_port_t taskPort, int fd);
-bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStream);
+struct CrashContext {
+	__darwin_mcontext64 mcontext;
+	
+	uint64_t crashedTID;
+};
+
+bool MiniDumpWriteDump (mach_port_t taskPort, FILE* pFile, CrashContext* pCrashContext = nullptr);
+bool MiniDumpWriteDump (mach_port_t taskPort, int fd, CrashContext* pCrashContext = nullptr);
+bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStream, CrashContext* pCrashContext = nullptr);
 
 }	// namespace MMD
 

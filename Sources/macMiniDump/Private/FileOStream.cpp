@@ -11,10 +11,10 @@ FileOStream::FileOStream (FILE* pFile): IRandomAccessBinaryOStream (), m_fd (fil
 
 FileOStream::FileOStream (int fd): m_fd (fd)
 {
-	int flags = fcntl(fd, F_GETFD);
+	/*int flags = fcntl(fd, F_GETFD);
 	// If file is not writable (or can't tell if writable), bail
 	if (flags == -1 || (flags != O_RDWR && flags != O_WRONLY))
-		Cleanup ();
+		Cleanup ();*/
 }
 
 FileOStream::FileOStream (const std::string filePath)
