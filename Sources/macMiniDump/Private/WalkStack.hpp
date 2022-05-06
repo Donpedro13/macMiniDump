@@ -6,17 +6,25 @@
 #include <mach/vm_map.h>
 #include <mach/mach_vm.h>
 #include "MachOCoreDumpBuilder.hpp"
+#include <list>
 
 
 namespace MMD {
 namespace WalkStack {
 
-/// @returns True if walking may be continued, false otherwise.
-typedef void (*WalkStackVisitorFn)(mach_port_t taskPort, uint64_t nextCallStackAddress, void * other);
-void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer, WalkStackVisitorFn visitor, void* payload);
+class IStackWalkVisitor {
+public:
+    virtual void Visit(mach_port_t taskPort, uint64_t nextCallStackAddress, uint64_t nextBasePointer) = 0;
+};
 
-void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStackAddress, MMD::MachOCoreDumpBuilder *pCoreBuilder);
-void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStackAddress, void *pCoreBuilder);
+class SegmentCollectorVisitor final : public IStackWalkVisitor {
+    MMD::MachOCoreDumpBuilder *pCoreBuilder;
+public:
+    SegmentCollectorVisitor(MMD::MachOCoreDumpBuilder *pCoreBuilder);
+    virtual void Visit(mach_port_t taskPort, uint64_t nextCallStackAddress, uint64_t nextBasePointer) override;
+};
+
+void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer, std::vector<IStackWalkVisitor *> visitor);
 
 } // namespace MMD
 

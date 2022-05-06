@@ -39,7 +39,7 @@ static const size_t BOLDLY_ASSUMED_ADDRESS_LENGTH_ON_ALL_PLATFOMRS_IN_BYTES = 8;
 
 static uint64_t Deref (mach_port_t taskPort, const uint64_t ptr);
 
-void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer, WalkStackVisitorFn visitor, void* payload)
+void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer, std::vector<IStackWalkVisitor *> visitors)
 {
 	
 	std::cout << "Start walking from base pointer 0x"
@@ -52,7 +52,7 @@ void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t base
 	asm ("xpaci %0" : "+r" (instructionPointer));
 #endif
 
-	visitor(taskPort, instructionPointer, payload);
+	for (IStackWalkVisitor * visitor: visitors) visitor->Visit(taskPort, instructionPointer, basePointer);
 
 	uint64_t upperFunctionBasePointer = 0;
 	uint64_t upperFunctionReturnAddress = 0;
@@ -88,7 +88,10 @@ void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t base
 			<< upperFunctionReturnAddress << std::endl;
 
 		if(upperFunctionBasePointer != 0) {
-			visitor(taskPort, upperFunctionReturnAddress, payload);
+			for (IStackWalkVisitor * visitor: visitors) {
+				visitor->Visit(taskPort, upperFunctionReturnAddress, upperFunctionBasePointer);
+			}
+
 			basePointer = upperFunctionBasePointer;
 		} else {
 			break;
@@ -116,9 +119,17 @@ static uint64_t Deref (mach_port_t taskPort, const uint64_t ptr) {
 	return result;
 }
 
-void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStackAddress, MachOCoreDumpBuilder *pCoreBuilder)
+SegmentCollectorVisitor::SegmentCollectorVisitor (MMD::MachOCoreDumpBuilder *pCoreBuilder):
+	pCoreBuilder (pCoreBuilder)
 {
-	assert(nextCallStackAddress != 0);
+
+}
+
+void SegmentCollectorVisitor::Visit (mach_port_t taskPort,
+								    uint64_t nextCallStackAddress,
+									uint64_t /*nextBasePointer*/)
+{
+	if(nextCallStackAddress == 0) return;
 
 	static const size_t SEGMENT_DISTANCE = 256;
 
@@ -132,10 +143,6 @@ void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStackAddress
 	uint64_t protection = GetProtectionOf(taskPort, startAddress, length);
 
 	MMD::Utils::AddSegmentCommandFromProcessMemory(pCoreBuilder, taskPort, protection, startAddress, length);
-}
-
-void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStackAddress, void *pCoreBuilder) {
-	SegmentCollectorVisitor(taskPort, nextCallStackAddress, static_cast<MMD::MachOCoreDumpBuilder*>(pCoreBuilder));
 }
 
 } // namespace MMD

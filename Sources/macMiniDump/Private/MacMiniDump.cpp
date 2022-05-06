@@ -227,11 +227,12 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 
 		// TODO: a stack tetejétől a legalsó base pointerig bemásolgatni a memória címeket
 
+		MMD::WalkStack::SegmentCollectorVisitor segmentVisitor(pCoreBuilder);
+		
 		MMD::WalkStack::WalkStack(taskPort,
 				  pointers.InstructionPointer().AsUInt64(),
 				  pointers.BasePointer().AsUInt64(),
-				  MMD::WalkStack::SegmentCollectorVisitor,
-				  pCoreBuilder);
+				  { &segmentVisitor });
 	}
 	
 	return true;
