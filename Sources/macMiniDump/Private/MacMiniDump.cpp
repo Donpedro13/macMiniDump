@@ -248,11 +248,6 @@ static void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStack
 	SegmentCollectorVisitor(taskPort, nextCallStackAddress, static_cast<MachOCoreDumpBuilder*>(pCoreBuilder));
 }
 
-static uint64_t GetBasePointer (const MachOCore::GPR& gpr);
-static uint64_t GetInstructionPointer (const MachOCore::GPR& gpr);
-
-// static void AddSegmentAround (uint64_t address, size_t howManyBytes);
-
 bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 {
 	thread_act_port_array_t threads;
@@ -265,53 +260,20 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 	// If the task is not suspended, there is a race condition: threads might start and end in the meantime
 	// We have to handle this situation (by gracefully handling errors)
 	for (int i = 0; i < nThreads; ++i) {
-		const bool suspend = threads[i] != thisThread;
+		const bool suspendWhileInspecting = threads[i] != thisThread;
 
-		if (suspend) {
-			if (thread_suspend (threads[i]) != KERN_SUCCESS)
-				continue;
-		}
-		
-		defer {
-			if (suspend)
-				thread_resume (threads[i]);
-		};
-		
-#ifdef __x86_64__
-		x86_thread_state64_t ts;
-		x86_exception_state64_t es;
-		mach_msg_type_number_t gprCount = x86_THREAD_STATE64_COUNT;
-		mach_msg_type_number_t excCount = x86_EXCEPTION_STATE64_COUNT;
-		const thread_state_flavor_t gprFlavor = x86_THREAD_STATE64;
-		const thread_state_flavor_t excFlavor = x86_EXCEPTION_STATE64;
-#elif defined __arm64__
-		arm_thread_state64_t ts;
-		arm_exception_state64_t es;
-		mach_msg_type_number_t gprCount = ARM_THREAD_STATE64_COUNT;
-		mach_msg_type_number_t excCount = ARM_EXCEPTION_STATE64_COUNT;
-		const thread_state_flavor_t gprFlavor = ARM_THREAD_STATE64;
-		const thread_state_flavor_t excFlavor = ARM_EXCEPTION_STATE64;
-#endif
-		
-		if (thread_get_state (threads[i], gprFlavor, (thread_state_t)&ts, &gprCount) != KERN_SUCCESS)
-			continue;
+		MachOCore::ThreadInfo threadInfo(threads[i], suspendWhileInspecting);
+		if(!threadInfo.healthy) continue;
 
-		if (thread_get_state (threads[i], excFlavor, (thread_state_t)&es, &excCount) != KERN_SUCCESS)
-			continue;
+		pCoreBuilder->AddThreadCommand (threadInfo.gpr, threadInfo.exc);
 
-		MachOCore::GPR gpr;
-		gpr.kind = MachOCore::RegSetKind::GPR;
-		gpr.nWordCount = sizeof ts / sizeof (uint32_t);
-		memcpy(&gpr.gpr, &ts, sizeof ts);
-		
-		MachOCore::EXC exc;
-		exc.kind = MachOCore::RegSetKind::EXC;
-		exc.nWordCount = sizeof es / sizeof (uint32_t);
-		memcpy(&exc.exc, &es, sizeof es);
-		
-		pCoreBuilder->AddThreadCommand (gpr, exc);
+		MachOCore::GPRPointers pointers(threadInfo.gpr);
 
-		WalkStack(taskPort, GetInstructionPointer(gpr), GetBasePointer(gpr), SegmentCollectorVisitor, pCoreBuilder);
+		WalkStack(taskPort,
+				  pointers.InstructionPointer().AsUInt64(),
+				  pointers.BasePointer().AsUInt64(),
+				  SegmentCollectorVisitor,
+				  pCoreBuilder);
 	}
 	
 	return true;
@@ -401,6 +363,19 @@ static void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64
 		
 #ifdef __arm64__
 	// Clear PAC bits from the pointer
+	//
+	//           >>\.
+	//         /_  )`.
+	//        /  _)`^)`.   _.---. _
+	//       (_,' \  `^-)""      `.\
+	//             |              | \
+	//             \              / |
+	//            / \  /.___.'\  (\ (_
+	//           < ,"||     \ |`. \`-'
+	//            \\ ()      )|  )/
+	//            |_>|>     /_] //
+	//              /_]        /_]
+	//
 	asm ("xpaci %0" : "+r" (upperFunctionReturnAddress));
 #endif
 
@@ -438,24 +413,6 @@ static uint64_t Deref (mach_port_t taskPort, const uint64_t ptr) {
 	std::cout << "got dereffered new pointer: 0x" << std::hex << result << "... ";
 
 	return result;
-}
-
-static uint64_t GetBasePointer (const MachOCore::GPR& gpr)
-{
-#ifdef __x86_64__
-	return gpr.gpr.__rbp;
-#elif defined __arm64__
-	return gpr.gpr.__fp;
-#endif
-}
-
-static uint64_t GetInstructionPointer (const MachOCore::GPR& gpr)
-{
-#ifdef __x86_64__
-	return gpr.gpr.__rip;
-#elif defined __arm64__
-	return gpr.gpr.__pc;
-#endif
 }
 
 bool AddNotesToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)

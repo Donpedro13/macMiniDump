@@ -7,6 +7,7 @@
 #include <uuid/uuid.h>
 
 #include <cstdint>
+#include <memory>
 
 namespace MMD {
 namespace MachOCore {
@@ -49,7 +50,6 @@ enum class RegSetKind : uint32_t {
 	EXC = 7
 #endif
 };
-
 struct GPR {
 	RegSetKind kind;
 	uint32_t nWordCount;
@@ -70,6 +70,64 @@ struct EXC {
 #elif defined __arm64__
 	arm_exception_state64_t exc;
 #endif
+};
+
+class ThreadInfo final {
+private:
+	bool suspendWhileInspecting;
+	thread_act_t threads_i;
+
+public:
+#ifdef __x86_64__
+	x86_thread_state64_t ts;
+	x86_exception_state64_t es;
+#elif defined __arm64__
+	arm_thread_state64_t ts;
+	arm_exception_state64_t es;
+#endif
+	mach_msg_type_number_t gprCount;
+	mach_msg_type_number_t excCount;
+	thread_state_flavor_t gprFlavor;
+	thread_state_flavor_t excFlavor;
+
+	GPR gpr;
+	EXC exc;
+
+	ThreadInfo (thread_act_t, bool suspendWhileInspecting);
+	~ThreadInfo();
+
+	bool healthy;
+};
+
+class Pointer final {
+private:
+	std::unique_ptr<uint8_t[]> ptr;
+
+public:
+	explicit Pointer (size_t widthInBytes, void *ptr);
+	explicit Pointer (uint64_t ptr);
+
+	void* 	 AsGenericPointer ();
+	uint64_t AsUInt64 ();
+
+	template <typename T>
+	T As ();
+
+	size_t WidthInBytes;
+};
+
+class GPRPointers final {
+private:
+	const GPR& gpr;
+
+public:
+	explicit GPRPointers (const GPR& gpr);
+
+	Pointer BasePointer ();
+	Pointer InstructionPointer ();
+	Pointer StackPointer ();
+
+	size_t AddressWidthInBytes ();
 };
 
 extern const char* AddrableBitsOwner;
