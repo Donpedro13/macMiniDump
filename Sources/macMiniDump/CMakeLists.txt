@@ -19,8 +19,16 @@ SET(macMiniDump_sources
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MachOCoreInternal.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MemoryRegionList.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MemoryRegionList.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/ProcessMemoryReaderDataPtr.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/ProcessMemoryReaderDataPtr.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/WalkStack.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/WalkStack.hpp
 
-		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/Defer.hpp		
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/Defer.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/AddSegmentCommandFromProcessMemory.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/AddSegmentCommandFromProcessMemory.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/GetProtectionOf.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/RegionInfo.hpp
 		)
 
 ADD_LIBRARY(macMiniDump ${macMiniDump_sources})

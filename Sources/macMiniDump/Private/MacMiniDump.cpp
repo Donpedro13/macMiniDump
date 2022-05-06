@@ -14,6 +14,9 @@
 #include "ModuleList.hpp"
 #include "MemoryRegionList.hpp"
 #include "ReadProcessMemory.hpp"
+#include "ProcessMemoryReaderDataPtr.hpp"
+#include "Utils/AddSegmentCommandFromProcessMemory.hpp"
+#include "WalkStack.hpp"
 
 #include <mach/vm_map.h>
 #include <mach/mach_vm.h>
@@ -29,46 +32,6 @@
 namespace MMD {
 namespace {
 
-class ProcessMemoryReaderDataPtr : public IDataPtr {
-public:
-	ProcessMemoryReaderDataPtr (mach_port_t taskPort, vm_address_t startAddress, vm_size_t maxSize);
-	
-	virtual const char* Get (size_t offset, size_t size) override;
-	virtual const char* Get () override;
-	
-private:
-	mach_port_t	 m_taskPort;
-	vm_address_t m_startAddress;
-	vm_size_t	 m_maxSize;
-	
-	std::unique_ptr<char[]> m_currentCopy;
-};
-
-ProcessMemoryReaderDataPtr::ProcessMemoryReaderDataPtr (mach_port_t taskPort, vm_address_t startAddress, vm_size_t size):
-	m_taskPort (taskPort),
-	m_startAddress (startAddress),
-	m_maxSize (size)
-{
-}
-
-const char* ProcessMemoryReaderDataPtr::Get (size_t offset, size_t size)
-{
-	if (offset + size > m_maxSize)
-		return nullptr;
-	
-	m_currentCopy = ReadProcessMemory (m_taskPort, m_startAddress + offset, size);
-
-	if(m_currentCopy == nullptr) {
-		std::cout << "\n\n!!! Failure reading memory from address at 0x" << std::hex << m_startAddress + offset << "\n" << std::endl;
-	}
-	
-	return m_currentCopy.get ();
-}
-
-const char* ProcessMemoryReaderDataPtr::Get ()
-{
-	return nullptr;	// Not a good idea...
-}
 
 std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t payloadOffset)
 {
@@ -243,20 +206,8 @@ bool AddPayloadsAndWrite (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuild
 	return pCoreBuilder->Build (pOStream);
 }
 
-/// @returns True if walking may be continued, false otherwise.
-typedef void (*WalkStackVisitorFn)(mach_port_t taskPort, uint64_t nextCallStackAddress, void * other);
-static void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer, WalkStackVisitorFn visitor, void* payload);
 
-static void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStackAddress, MachOCoreDumpBuilder *pCoreBuilder);
 
-static void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStackAddress, void *pCoreBuilder) {
-	SegmentCollectorVisitor(taskPort, nextCallStackAddress, static_cast<MachOCoreDumpBuilder*>(pCoreBuilder));
-}
-
-static uint64_t GetBasePointer (const MachOCore::GPR& gpr);
-static uint64_t GetInstructionPointer (const MachOCore::GPR& gpr);
-
-// static void AddSegmentAround (uint64_t address, size_t howManyBytes);
 
 bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder, CrashContext* pCrashContext /*= nullptr*/)
 {
@@ -272,228 +223,36 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 	// If the task is not suspended, there is a race condition: threads might start and end in the meantime
 	// We have to handle this situation (by gracefully handling errors)
 	for (int i = 0; i < nThreads; ++i) {
-		const bool suspend = threads[i] != thisThread;
+		const bool suspendWhileInspecting = threads[i] != thisThread;
 
-		if (suspend) {
-			if (thread_suspend (threads[i]) != KERN_SUCCESS)
-				continue;
+		MachOCore::ThreadInfo threadInfo(threads[i], suspendWhileInspecting);
+		if(!threadInfo.healthy) continue;
+
+		pCoreBuilder->AddThreadCommand (threadInfo.gpr, threadInfo.exc);
+
+		MachOCore::GPRPointers pointers(threadInfo.gpr);
+
+		// TODO: a stack tetejétől a legalsó base pointerig bemásolgatni a memória címeket
+
+		MMD::WalkStack::SegmentCollectorVisitor segmentVisitor (pCoreBuilder);
+		MMD::WalkStack::LastBasePointerRecorder basePointerRecorderVisitor;
+		
+		MMD::WalkStack::WalkStack(taskPort,
+				  pointers.InstructionPointer().AsUInt64(),
+				  pointers.BasePointer().AsUInt64(),
+				  { &segmentVisitor, &basePointerRecorderVisitor });
+
+
+		uint64_t sp = pointers.StackPointer().AsUInt64();
+		size_t lengthInBytes = basePointerRecorderVisitor.beforeLastBasePointer - sp + 1;
+
+		if(threads[i] != thisThread)
+		{
+			Utils::AddSegmentCommandFromProcessMemory (pCoreBuilder, taskPort, sp, lengthInBytes);
 		}
-		
-		defer {
-			if (suspend)
-				thread_resume (threads[i]);
-		};
-		
-#ifdef __x86_64__
-		x86_thread_state64_t ts;
-		x86_exception_state64_t es;
-		mach_msg_type_number_t gprCount = x86_THREAD_STATE64_COUNT;
-		mach_msg_type_number_t excCount = x86_EXCEPTION_STATE64_COUNT;
-		const thread_state_flavor_t gprFlavor = x86_THREAD_STATE64;
-		const thread_state_flavor_t excFlavor = x86_EXCEPTION_STATE64;
-#elif defined __arm64__
-		arm_thread_state64_t ts;
-		arm_exception_state64_t es;
-		mach_msg_type_number_t gprCount = ARM_THREAD_STATE64_COUNT;
-		mach_msg_type_number_t excCount = ARM_EXCEPTION_STATE64_COUNT;
-		const thread_state_flavor_t gprFlavor = ARM_THREAD_STATE64;
-		const thread_state_flavor_t excFlavor = ARM_EXCEPTION_STATE64;
-#endif
-		
-		// TODO this does not work for some reason, but it should...
-		
-		// If the thread is the crashing one, start stackwalking etc. from the provided crash context
-		const pthread_t pthread = pthread_from_mach_thread_np (threads[i]);
-		uint64_t tid = 0;
-		if (pthread_threadid_np(pthread, &tid) != 0)
-			syslog (LOG_NOTICE, "Unable to get tid for thread #%d!", i);
-		
-		// TODO assume that if the target process has crashed, it's the main thread
-		// This is obviously a HACK for the time being...
-		if (pCrashContext != nullptr && /*tid == pCrashContext->crashedTID*/ i == 0) {
-			syslog (LOG_NOTICE, "Found main thread (tid %" PRIu64 " )", tid);
-			
-			memcpy (&ts, &pCrashContext->mcontext.__ss, sizeof (ts));
-			memcpy (&es, &pCrashContext->mcontext.__es, sizeof (es));
-		} else {
-			syslog (LOG_NOTICE, "Adding thread (tid %" PRIu64 " )", tid);
-			
-			if (thread_get_state (threads[i], gprFlavor, (thread_state_t)&ts, &gprCount) != KERN_SUCCESS)
-				continue;
-
-			if (thread_get_state (threads[i], excFlavor, (thread_state_t)&es, &excCount) != KERN_SUCCESS)
-				continue;
-		}
-
-		// TODO what's up with this? When a core file of a process that has a debugger attached,
-		//   this seems to happen sometimes. Maybe we should just ignore this edge case...
-#ifdef __x86_64__
-		if (ts.__rip == 0) {
-#elif defined __arm64__
-		if (ts.__pc == 0) {
-#endif
-			syslog (LOG_WARNING, "Skipping thread #%d because pc was 0!", i);
-			
-			continue;
-		}
-
-		MachOCore::GPR gpr;
-		gpr.kind = MachOCore::RegSetKind::GPR;
-		gpr.nWordCount = sizeof ts / sizeof (uint32_t);
-		memcpy(&gpr.gpr, &ts, sizeof ts);
-		
-		MachOCore::EXC exc;
-		exc.kind = MachOCore::RegSetKind::EXC;
-		exc.nWordCount = sizeof es / sizeof (uint32_t);
-		memcpy(&exc.exc, &es, sizeof es);
-		
-		pCoreBuilder->AddThreadCommand (gpr, exc);
-
-		WalkStack(taskPort, GetInstructionPointer(gpr), GetBasePointer(gpr), SegmentCollectorVisitor, pCoreBuilder);
 	}
 	
 	return true;
-}
-
-// scummed from llvm, MachVMRegion.h and .cpp
-#if defined(VM_REGION_SUBMAP_SHORT_INFO_COUNT_64)
-  typedef vm_region_submap_short_info_data_64_t RegionInfo;
-  enum { kRegionInfoSize = VM_REGION_SUBMAP_SHORT_INFO_COUNT_64 };
-#else
-  typedef vm_region_submap_info_data_64_t RegionInfo;
-  enum { kRegionInfoSize = VM_REGION_SUBMAP_INFO_COUNT_64 };
-#endif
-
-static uint64_t GetProtectionOf (mach_port_t taskPort, uint64_t addr, uint64_t size)
-{
-	// Gyanús, hogy ez nem publikus függvény:
-	// Péter tippje: llvm - MachVMRegion.cpp, MachVMRegion::GetRegionForAddress
-	// mach_vm_region_info_64 (taskPort, startAddress, &region, &objects, &objectsCnt);
-
-	natural_t nesting_depth;
-	RegionInfo info;
-	mach_msg_type_number_t infoCnt;
-
-	uint64_t       recurseAddr = addr;
-	mach_vm_size_t recurseSize = size;
-
-	::mach_vm_region_recurse (taskPort,
-							&recurseAddr,
-							&recurseSize,
-							&nesting_depth,
-							(vm_region_recurse_info_t)&info, // scummed from llvm
-							&infoCnt);
-
-	return info.protection;
-}
-
-static void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStackAddress, MachOCoreDumpBuilder *pCoreBuilder)
-{
-	assert(nextCallStackAddress != 0);
-
-	static const size_t SEGMENT_DISTANCE = 256;
-
-	uint64_t middleAddress = nextCallStackAddress;
-	uint64_t startAddress = middleAddress - SEGMENT_DISTANCE;
-	size_t length = (2 * SEGMENT_DISTANCE) + 1;
-
-	std::cout << "\n" << std::hex << "--- start: 0x" << startAddress << " -- middle: 0x" << middleAddress << " -- ...." << std::endl;
-	std::cout << "----------- " << std::dec << length << " bytes ---------------->\n" << std::endl;
-
-	uint64_t protection = GetProtectionOf(taskPort, startAddress, length);
-
-	ProcessMemoryReaderDataPtr * dataPtr = new ProcessMemoryReaderDataPtr (taskPort, startAddress, length);
-	std::unique_ptr<DataProvider> dataProvider = std::make_unique<DataProvider> (dataPtr, length);
-
-	std::cout << "scheduling segment command from 0x" << std::hex << startAddress << " (length: " << std::dec << length << " bytes)... " << std::endl;
-	
-	pCoreBuilder->AddSegmentCommand (startAddress, protection, std::move (dataProvider));
-}
-
-static const size_t BOLDLY_ASSUMED_ADDRESS_LENGTH_ON_ALL_PLATFOMRS_IN_BYTES = 8;
-
-static uint64_t Deref (mach_port_t taskPort, const uint64_t ptr);
-
-static void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer, WalkStackVisitorFn visitor, void* payload)
-{
-	
-	std::cout << "Start walking from base pointer 0x"
-			  << std::hex << basePointer 
-			  << " and instruction pointer 0x"
-			  << std::hex << instructionPointer << std::endl;
-	
-#ifdef __arm64__
-	// Clear PAC bits from the pointer
-	asm ("xpaci %0" : "+r" (instructionPointer));
-#endif
-
-	visitor(taskPort, instructionPointer, payload);
-
-	uint64_t upperFunctionBasePointer = 0;
-	uint64_t upperFunctionReturnAddress = 0;
-
-	for (;;)
-	{
-		upperFunctionBasePointer = Deref(taskPort, basePointer);
-		upperFunctionReturnAddress = Deref(taskPort, basePointer + BOLDLY_ASSUMED_ADDRESS_LENGTH_ON_ALL_PLATFOMRS_IN_BYTES);
-		
-#ifdef __arm64__
-	// Clear PAC bits from the pointer
-	asm ("xpaci %0" : "+r" (upperFunctionReturnAddress));
-#endif
-
-		std::cout 
-			<< "Upper function base pointer is 0x"
-			<< std::hex
-			<< upperFunctionBasePointer
-			<< " and upper function return address is 0x"
-			<< upperFunctionReturnAddress << std::endl;
-
-		if(upperFunctionBasePointer != 0) {
-			visitor(taskPort, upperFunctionReturnAddress, payload);
-			basePointer = upperFunctionBasePointer;
-		} else {
-			break;
-		}
-	}
-}
-
-static uint64_t Deref (mach_port_t taskPort, const uint64_t ptr) {
-	std::cout << "dereffering 0x" << std::hex << ptr << "... ";
-	
-	uint64_t result = 0;
-
-	if (ptr != 0) {
-		std::unique_ptr<char[]> mem (ReadProcessMemory (taskPort,
-														ptr,
-														BOLDLY_ASSUMED_ADDRESS_LENGTH_ON_ALL_PLATFOMRS_IN_BYTES));
-
-		if (mem != nullptr) {
-			result = *reinterpret_cast<uint64_t*> (mem.get());
-		}
-	}
-
-	std::cout << "got dereffered new pointer: 0x" << std::hex << result << "... ";
-
-	return result;
-}
-
-static uint64_t GetBasePointer (const MachOCore::GPR& gpr)
-{
-#ifdef __x86_64__
-	return gpr.gpr.__rbp;
-#elif defined __arm64__
-	return gpr.gpr.__fp;
-#endif
-}
-
-static uint64_t GetInstructionPointer (const MachOCore::GPR& gpr)
-{
-#ifdef __x86_64__
-	return gpr.gpr.__rip;
-#elif defined __arm64__
-	return gpr.gpr.__pc;
-#endif
 }
 
 bool AddNotesToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
@@ -514,13 +273,8 @@ bool AddSegmentsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder
 		
 		if (regionInfo.type != MemoryRegionType::Stack)
 			continue;
-		
-		if (!pCoreBuilder->AddSegmentCommand (regionInfo.vmaddr,
-											  regionInfo.prot,
-											  std::make_unique<DataProvider> (new ProcessMemoryReaderDataPtr (taskPort,
-																											  regionInfo.vmaddr,
-																											  regionInfo.vmsize),
-																			  regionInfo.vmsize)))
+
+		if(!Utils::AddSegmentCommandFromProcessMemory(pCoreBuilder, taskPort, regionInfo.prot, regionInfo.vmaddr, regionInfo.vmsize))
 		{
 			return false;
 		}
@@ -646,8 +400,8 @@ bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStre
 	if (!AddNotesToCore (taskPort, &coreBuilder))
 		return false;
 	
-	if (!AddSegmentsToCore (taskPort, &coreBuilder))
-		return false;
+	// if (!AddSegmentsToCore (taskPort, &coreBuilder))
+	// 	return false;
 	
 	if (!AddPayloadsAndWrite (taskPort, &coreBuilder, pOStream))
 		return false;
