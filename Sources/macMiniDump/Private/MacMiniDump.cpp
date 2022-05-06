@@ -24,6 +24,12 @@
 namespace MMD {
 namespace {
 
+static bool AddSegmentCommandFromProcessMemory (MachOCoreDumpBuilder* pCoreBuilder,
+											mach_port_t taskPort,
+											MMD::MemoryProtection prot,
+											uint64_t startAddress,
+											size_t lengthInBytes);
+
 class ProcessMemoryReaderDataPtr : public IDataPtr {
 public:
 	ProcessMemoryReaderDataPtr (mach_port_t taskPort, vm_address_t startAddress, vm_size_t maxSize);
@@ -326,12 +332,7 @@ static void SegmentCollectorVisitor(mach_port_t taskPort, uint64_t nextCallStack
 
 	uint64_t protection = GetProtectionOf(taskPort, startAddress, length);
 
-	ProcessMemoryReaderDataPtr * dataPtr = new ProcessMemoryReaderDataPtr (taskPort, startAddress, length);
-	std::unique_ptr<DataProvider> dataProvider = std::make_unique<DataProvider> (dataPtr, length);
-
-	std::cout << "scheduling segment command from 0x" << std::hex << startAddress << " (length: " << std::dec << length << " bytes)... " << std::endl;
-	
-	pCoreBuilder->AddSegmentCommand (startAddress, protection, std::move (dataProvider));
+	AddSegmentCommandFromProcessMemory(pCoreBuilder, taskPort, protection, startAddress, length);
 }
 
 static const size_t BOLDLY_ASSUMED_ADDRESS_LENGTH_ON_ALL_PLATFOMRS_IN_BYTES = 8;
@@ -424,6 +425,22 @@ bool AddNotesToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 	return true;
 }
 
+
+
+static bool AddSegmentCommandFromProcessMemory (MachOCoreDumpBuilder* pCoreBuilder,
+												mach_port_t taskPort,
+												MMD::MemoryProtection prot,
+											    uint64_t startAddress,
+												size_t lengthInBytes)
+{
+	ProcessMemoryReaderDataPtr * dataPtr = new ProcessMemoryReaderDataPtr (taskPort, startAddress, lengthInBytes);
+	std::unique_ptr<DataProvider> dataProvider = std::make_unique<DataProvider> (dataPtr, lengthInBytes);
+
+	std::cout << "scheduling segment command from 0x" << std::hex << startAddress << " (length: " << std::dec << lengthInBytes << " bytes)... " << std::endl;
+	
+	return pCoreBuilder->AddSegmentCommand (startAddress, prot, std::move (dataProvider));
+}
+
 bool AddSegmentsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 {
 	MemoryRegionList regionList (taskPort);
@@ -433,13 +450,8 @@ bool AddSegmentsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder
 		
 		if (regionInfo.type != MemoryRegionType::Stack)
 			continue;
-		
-		if (!pCoreBuilder->AddSegmentCommand (regionInfo.vmaddr,
-											  regionInfo.prot,
-											  std::make_unique<DataProvider> (new ProcessMemoryReaderDataPtr (taskPort,
-																											  regionInfo.vmaddr,
-																											  regionInfo.vmsize),
-																			  regionInfo.vmsize)))
+
+		if(!AddSegmentCommandFromProcessMemory(pCoreBuilder, taskPort, regionInfo.prot, regionInfo.vmaddr, regionInfo.vmsize))
 		{
 			return false;
 		}
