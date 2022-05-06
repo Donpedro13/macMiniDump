@@ -227,12 +227,22 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 
 		// TODO: a stack tetejétől a legalsó base pointerig bemásolgatni a memória címeket
 
-		MMD::WalkStack::SegmentCollectorVisitor segmentVisitor(pCoreBuilder);
+		MMD::WalkStack::SegmentCollectorVisitor segmentVisitor (pCoreBuilder);
+		MMD::WalkStack::LastBasePointerRecorder basePointerRecorderVisitor;
 		
 		MMD::WalkStack::WalkStack(taskPort,
 				  pointers.InstructionPointer().AsUInt64(),
 				  pointers.BasePointer().AsUInt64(),
-				  { &segmentVisitor });
+				  { &segmentVisitor, &basePointerRecorderVisitor });
+
+
+		uint64_t sp = pointers.StackPointer().AsUInt64();
+		size_t lengthInBytes = basePointerRecorderVisitor.beforeLastBasePointer - sp + 1;
+
+		if(threads[i] != thisThread)
+		{
+			Utils::AddSegmentCommandFromProcessMemory (pCoreBuilder, taskPort, sp, lengthInBytes);
+		}
 	}
 	
 	return true;
@@ -383,8 +393,8 @@ bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStre
 	if (!AddNotesToCore (taskPort, &coreBuilder))
 		return false;
 	
-	if (!AddSegmentsToCore (taskPort, &coreBuilder))
-		return false;
+	// if (!AddSegmentsToCore (taskPort, &coreBuilder))
+	// 	return false;
 	
 	if (!AddPayloadsAndWrite (taskPort, &coreBuilder, pOStream))
 		return false;

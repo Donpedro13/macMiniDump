@@ -1,36 +1,10 @@
 #include "WalkStack.hpp"
 #include "ReadProcessMemory.hpp"
 #include "Utils/AddSegmentCommandFromProcessMemory.hpp"
+#include "Utils/RegionInfo.hpp"
+#include "Utils/GetProtectionOf.hpp"
 
 #include <iostream>
-
-// scummed from llvm, MachVMRegion.h and .cpp
-#if defined(VM_REGION_SUBMAP_SHORT_INFO_COUNT_64)
-  typedef vm_region_submap_short_info_data_64_t RegionInfo;
-  enum { kRegionInfoSize = VM_REGION_SUBMAP_SHORT_INFO_COUNT_64 };
-#else
-  typedef vm_region_submap_info_data_64_t RegionInfo;
-  enum { kRegionInfoSize = VM_REGION_SUBMAP_INFO_COUNT_64 };
-#endif
-
-static uint64_t GetProtectionOf (mach_port_t taskPort, uint64_t addr, uint64_t size)
-{
-	natural_t nesting_depth;
-	RegionInfo info;
-	mach_msg_type_number_t infoCnt;
-
-	uint64_t       recurseAddr = addr;
-	mach_vm_size_t recurseSize = size;
-
-	::mach_vm_region_recurse (taskPort,
-							&recurseAddr,
-							&recurseSize,
-							&nesting_depth,
-							(vm_region_recurse_info_t)&info, // scummed from llvm
-							&infoCnt);
-
-	return info.protection;
-}
 
 namespace MMD {
 namespace WalkStack {
@@ -140,9 +114,24 @@ void SegmentCollectorVisitor::Visit (mach_port_t taskPort,
 	std::cout << "\n" << std::hex << "--- start: 0x" << startAddress << " -- middle: 0x" << middleAddress << " -- ...." << std::endl;
 	std::cout << "----------- " << std::dec << length << " bytes ---------------->\n" << std::endl;
 
-	uint64_t protection = GetProtectionOf(taskPort, startAddress, length);
+	uint64_t protection = Utils::GetProtectionOf(taskPort, startAddress, length);
 
 	MMD::Utils::AddSegmentCommandFromProcessMemory(pCoreBuilder, taskPort, protection, startAddress, length);
+}
+
+LastBasePointerRecorder::LastBasePointerRecorder():
+	beforeLastBasePointer(0),
+	lastBasePointer(0)
+{
+	
+}
+
+void LastBasePointerRecorder::Visit(mach_port_t /*taskPort*/, uint64_t /*nextCallStackAddress*/, uint64_t nextBasePointer)
+{
+	if(nextBasePointer != 0) {
+		beforeLastBasePointer = lastBasePointer;
+		lastBasePointer = nextBasePointer;
+	}
 }
 
 } // namespace MMD

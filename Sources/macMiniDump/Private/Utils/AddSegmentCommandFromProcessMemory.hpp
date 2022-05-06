@@ -13,6 +13,12 @@ bool AddSegmentCommandFromProcessMemory (MachOCoreDumpBuilder* pCoreBuilder,
 											    uint64_t startAddress,
 												size_t lengthInBytes);
 
+/// @brief Determines protection automatically.
+bool AddSegmentCommandFromProcessMemory (MachOCoreDumpBuilder* pCoreBuilder,
+												mach_port_t taskPort,
+											    uint64_t startAddress,
+												size_t lengthInBytes);
+
 } // namespace MMD
 
 } // namespace Util

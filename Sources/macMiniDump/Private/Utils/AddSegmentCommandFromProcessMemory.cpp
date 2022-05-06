@@ -1,5 +1,6 @@
 #include "AddSegmentCommandFromProcessMemory.hpp"
 #include "../ProcessMemoryReaderDataPtr.hpp"
+#include "GetProtectionOf.hpp"
 
 #include <iostream>
 
@@ -15,4 +16,13 @@ bool MMD::Utils::AddSegmentCommandFromProcessMemory (MachOCoreDumpBuilder* pCore
 	std::cout << "scheduling segment command from 0x" << std::hex << startAddress << " (length: " << std::dec << lengthInBytes << " bytes)... " << std::endl;
 	
 	return pCoreBuilder->AddSegmentCommand (startAddress, prot, std::move (dataProvider));
+}
+
+bool MMD::Utils::AddSegmentCommandFromProcessMemory (MachOCoreDumpBuilder* pCoreBuilder,
+												mach_port_t taskPort,
+											    uint64_t startAddress,
+												size_t lengthInBytes)
+{
+	MMD::MemoryProtection prot = GetProtectionOf(taskPort, startAddress, lengthInBytes);
+	return MMD::Utils::AddSegmentCommandFromProcessMemory(pCoreBuilder, taskPort, prot, startAddress, lengthInBytes);
 }

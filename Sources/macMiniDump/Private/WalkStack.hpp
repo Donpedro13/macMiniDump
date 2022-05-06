@@ -24,6 +24,15 @@ public:
     virtual void Visit(mach_port_t taskPort, uint64_t nextCallStackAddress, uint64_t nextBasePointer) override;
 };
 
+class LastBasePointerRecorder final: public IStackWalkVisitor {
+public:
+    LastBasePointerRecorder();
+    
+    uint64_t beforeLastBasePointer;
+    uint64_t lastBasePointer;
+    virtual void Visit(mach_port_t taskPort, uint64_t nextCallStackAddress, uint64_t nextBasePointer) override;
+};
+
 void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer, std::vector<IStackWalkVisitor *> visitor);
 
 } // namespace MMD

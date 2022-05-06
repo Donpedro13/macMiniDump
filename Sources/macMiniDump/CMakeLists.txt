@@ -27,6 +27,8 @@ SET(macMiniDump_sources
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/Defer.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/AddSegmentCommandFromProcessMemory.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/AddSegmentCommandFromProcessMemory.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/GetProtectionOf.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/RegionInfo.hpp
 		)
 
 ADD_LIBRARY(macMiniDump ${macMiniDump_sources})
