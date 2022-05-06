@@ -217,6 +217,8 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 	
 	syslog (LOG_NOTICE, "Enumerating %d threads...", nThreads);
 	
+	MemoryRegionList memoryRegions (taskPort);
+	
 	// If the task is not suspended, there is a race condition: threads might start and end in the meantime
 	// We have to handle this situation (by gracefully handling errors)
 	for (int i = 0; i < nThreads; ++i) {
@@ -304,11 +306,22 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 
 
 		uint64_t sp = pointers.StackPointer().AsUInt64();
-		size_t lengthInBytes = basePointerRecorderVisitor.beforeLastBasePointer - sp + 1;
+		MemoryRegionInfo regionInfo;
+		if (!memoryRegions.GetRegionInfoForAddress(sp, &regionInfo)) {
+			syslog (LOG_WARNING, "Stack pointer of thread #%d points to invalid memory: %llu", i, sp);
+			
+			continue;
+		}
+			
+		if (regionInfo.type != MemoryRegionType::Stack)
+			syslog (LOG_WARNING, "Stack pointer of thread #%d points to non-stack memory: %llu", i, sp);
+
+		const uint64_t stackStart = regionInfo.vmaddr + regionInfo.vmsize;
+		size_t lengthInBytes = stackStart - sp;
 
 		if(threads[i] != thisThread)
 		{
-			Utils::AddSegmentCommandFromProcessMemory (pCoreBuilder, taskPort, sp, lengthInBytes);
+			Utils::AddSegmentCommandFromProcessMemory (pCoreBuilder, taskPort, stackStart - lengthInBytes, lengthInBytes);
 		}
 	}
 	

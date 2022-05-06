@@ -27,7 +27,7 @@ STRING(CONCAT CXX_FLAGS_IMPL
 			  "-Wall "				# Turn on all warnings
 			  "-Werror "			# Treat warnings as errors
 			  "-g "				    # Complete debug info
-			  "-std=c++14 "		    # Resort to C++14 (for now) TODO how about C?
+			  "-std=c++17 "		    # Resort to C++17 (for now) TODO how about C?
 			  )
 SET(CMAKE_CXX_FLAGS	${CXX_FLAGS_IMPL})
 

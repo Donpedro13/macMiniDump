@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <map>
 
 namespace MMD {
 
@@ -35,14 +36,19 @@ struct MemoryRegionInfo {
 
 class MemoryRegionList {
 public:
-	using MemoryRegions = std::vector<MemoryRegionInfo>;
+	using MemoryRegions = std::map<uint64_t, MemoryRegionInfo>;
 	
 	explicit MemoryRegionList (mach_port_t taskPort);
 	
 	bool IsValid () const;
 	
 	size_t GetSize () const;
-	const MemoryRegionInfo& GetMemoryRegionInfo (size_t index) const;
+	
+	MemoryRegions::const_iterator begin () const { return m_regionInfos.begin (); }
+	MemoryRegions::const_iterator end () const { return m_regionInfos.end (); }
+	
+	bool HasAddress (uint64_t address) const;
+	bool GetRegionInfoForAddress (uint64_t address, const MemoryRegionInfo* pInfoOut) const;
 	
 private:
 	MemoryRegions m_regionInfos;

@@ -57,7 +57,7 @@ MemoryRegionList::MemoryRegionList (mach_port_t taskPort)
 				regionInfo.type = MemoryRegionType::Unknown;
 		}
 		
-		m_regionInfos.push_back (regionInfo);
+		m_regionInfos.insert ( { regionInfo.vmaddr, regionInfo });
 		
 		address += size;
 	}
@@ -74,9 +74,49 @@ size_t MemoryRegionList::GetSize () const
 	return m_regionInfos.size ();
 }
 
-const MemoryRegionInfo& MemoryRegionList::GetMemoryRegionInfo (size_t index) const
+bool MemoryRegionList::HasAddress (uint64_t address) const
 {
-	return m_regionInfos[index];
+	MemoryRegionInfo dummy;
+	
+	return GetRegionInfoForAddress(address, &dummy);
+}
+
+bool MemoryRegionList::GetRegionInfoForAddress (uint64_t address, const MemoryRegionInfo* pInfoOut) const
+{
+	if (m_regionInfos.empty ())
+		return false;
+	
+	auto isInRegion = [] (uint64_t addr, const MemoryRegionInfo& ri) {
+		return addr >= ri.vmaddr && addr <= ri.vmaddr + ri.vmsize;
+	};
+	
+	// Get the element that is greater or equal to the address
+	auto it = m_regionInfos.lower_bound (address);
+	
+	// Either the address is unknown, or it's "contained" in the last entry
+	if (it == m_regionInfos.end ()) {
+		if (isInRegion (address, m_regionInfos.rbegin ()->second)) {
+			memcpy ((void*)pInfoOut, &m_regionInfos.rbegin ()->second, sizeof (MemoryRegionInfo));
+			
+			return true;
+		} else {
+			return false;
+		}
+	}
+	
+	// If we got the first element, either the address is unknown, or it's contained in the first entry
+	// If the address is right at the start of a region, no need to check the previous one
+	// Else, the address is either contained in the previous region, or is unknown
+	if (it != m_regionInfos.begin () && address != it->first)
+		--it;
+	
+	if (isInRegion (address, it->second)) {
+		memcpy ((void*)pInfoOut, &it->second, sizeof (MemoryRegionInfo));
+		
+		return true;
+	} else {
+		return false;
+	}
 }
 
 void MemoryRegionList::Invalidate ()
