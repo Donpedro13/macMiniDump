@@ -68,12 +68,28 @@ std::array<char, 16> GetUUIDOfModule (const char* pModuleFirstByte)
 	return result;
 }
 
+bool GetTextSegmentOfModule (const ModuleList::ModuleInfo& moduleInfo, ModuleList::SegmentInfo* pSegInfoOut)
+{
+	for (const auto& seg : moduleInfo.segments) {
+		if (strcmp (seg.segmentName, "__TEXT") == 0) {
+			memcpy (pSegInfoOut, &seg, sizeof seg);
+			
+			return true;
+		}
+	}
+	
+	return false;
+}
+
 }	// namespace
+
+ModuleList::ModuleInfo::ModuleInfo () = default;
 
 ModuleList::ModuleInfo::ModuleInfo (uintptr_t loadAddress,
 									const uuid_t* pUUID,
 									const std::string& filePath,
 									std::vector<SegmentInfo> segments,
+									bool executing,
 									std::unique_ptr<char[]> headerAndLoadCommandBytes):
 	loadAddress (loadAddress),
 	uuid (),
@@ -145,11 +161,14 @@ ModuleList::ModuleList (mach_port_t taskPort)
 			std::array<char, 16> rawUUID = GetUUIDOfModule (pRawBytes.get ());
 			uuid_t uuid = {};
 			memcpy(&uuid, &rawUUID, sizeof uuid);
-			m_moduleInfos.emplace_back (loadAddress,
-										&uuid,
-										imagePath,
-										segments,
-										std::move (pRawBytes));
+			std::pair<uint64_t, ModuleInfo> p (loadAddress,
+											   ModuleInfo (loadAddress,
+													   &uuid,
+													   imagePath,
+													   segments,
+													   false,	// Assume it's not executing, for now
+													   std::move (pRawBytes)));
+			m_moduleInfos.emplace (std::move (p));
 		}
 	}
 }
@@ -164,9 +183,58 @@ size_t ModuleList::GetSize () const
 	return m_moduleInfos.size ();
 }
 
-const ModuleList::ModuleInfo& ModuleList::GetModuleInfo (size_t index) const
+bool ModuleList::GetModuleInfoForAddress (uint64_t address, ModuleInfo** pInfoOut)
 {
-	return m_moduleInfos[index];
+	if (m_moduleInfos.empty ())
+		return false;
+	
+	auto isCodeInModule = [] (uint64_t addr, const ModuleInfo& mi) {
+		ModuleList::SegmentInfo si;
+		if (!GetTextSegmentOfModule (mi, &si))
+			return false;
+		
+		return addr >= si.address && addr <= si.address + si.size;
+	};
+	
+	// Get the element that is greater or equal to the address
+	auto it = m_moduleInfos.lower_bound (address);
+	
+	// Either the address is unknown, or it's "contained" in the last entry
+	if (it == m_moduleInfos.end ()) {
+		if (isCodeInModule (address, m_moduleInfos.rbegin ()->second)) {
+			*pInfoOut = &m_moduleInfos.rbegin ()->second;
+			
+			return true;
+		} else {
+			return false;
+		}
+	}
+	
+	// If we got the first element, either the address is unknown, or it's contained in the first entry
+	// If the address is right at the start of a region, no need to check the previous one
+	// Else, the address is either contained in the previous region, or is unknown
+	if (it != m_moduleInfos.begin () && address != it->first)
+		--it;
+	
+	if (isCodeInModule (address, it->second)) {
+		*pInfoOut = &it->second;
+		
+		return true;
+	} else {
+		return false;
+	}
+}
+
+bool ModuleList::MarkAsExecuting (uint64_t codeAddress)
+{
+	ModuleInfo* pModuleInfo = nullptr;
+	
+	if (!GetModuleInfoForAddress (codeAddress, &pModuleInfo))
+		return false;
+	
+	pModuleInfo->executing = true;
+	
+	return true;
 }
 
 void ModuleList::Invalidate ()

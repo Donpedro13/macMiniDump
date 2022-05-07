@@ -5,9 +5,11 @@
 
 #include <mach/vm_map.h>
 #include <mach/mach_vm.h>
-#include "MachOCoreDumpBuilder.hpp"
+
 #include <list>
 
+#include "MachOCoreDumpBuilder.hpp"
+#include "ModuleList.hpp"
 
 namespace MMD {
 namespace WalkStack {
@@ -24,13 +26,14 @@ public:
     virtual void Visit(mach_port_t taskPort, uint64_t nextCallStackAddress, uint64_t nextBasePointer) override;
 };
 
-class LastBasePointerRecorder final: public IStackWalkVisitor {
+class ExecutingModuleCollectorVisitor final: public IStackWalkVisitor {
 public:
-    LastBasePointerRecorder();
-    
-    uint64_t beforeLastBasePointer;
-    uint64_t lastBasePointer;
-    virtual void Visit(mach_port_t taskPort, uint64_t nextCallStackAddress, uint64_t nextBasePointer) override;
+	ExecutingModuleCollectorVisitor (ModuleList* pModules);
+	
+	virtual void Visit(mach_port_t taskPort, uint64_t nextCallStackAddress, uint64_t nextBasePointer) override;
+	
+private:
+	ModuleList* m_pModules;
 };
 
 void WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer, std::vector<IStackWalkVisitor *> visitor);

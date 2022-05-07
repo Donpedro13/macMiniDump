@@ -5,6 +5,7 @@
 #include "Utils/GetProtectionOf.hpp"
 
 #include <iostream>
+#include <syslog.h>
 
 namespace MMD {
 namespace WalkStack {
@@ -119,19 +120,15 @@ void SegmentCollectorVisitor::Visit (mach_port_t taskPort,
 	MMD::Utils::AddSegmentCommandFromProcessMemory(pCoreBuilder, taskPort, protection, startAddress, length);
 }
 
-LastBasePointerRecorder::LastBasePointerRecorder():
-	beforeLastBasePointer(0),
-	lastBasePointer(0)
+ExecutingModuleCollectorVisitor::ExecutingModuleCollectorVisitor (ModuleList* pModules):
+	m_pModules (pModules)
 {
-	
 }
-
-void LastBasePointerRecorder::Visit(mach_port_t /*taskPort*/, uint64_t /*nextCallStackAddress*/, uint64_t nextBasePointer)
+	
+void ExecutingModuleCollectorVisitor::Visit (mach_port_t taskPort, uint64_t nextCallStackAddress, uint64_t nextBasePointer)
 {
-	if(nextBasePointer != 0) {
-		beforeLastBasePointer = lastBasePointer;
-		lastBasePointer = nextBasePointer;
-	}
+	if (!m_pModules->MarkAsExecuting (nextCallStackAddress))
+		syslog (LOG_WARNING, "Unable to mark module as executing for address %llu!", nextCallStackAddress);
 }
 
 } // namespace MMD

@@ -6,6 +6,7 @@
 #include <mach/port.h>
 #include <uuid/uuid.h>
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -26,25 +27,36 @@ public:
 		uuid_t		uuid;
 		std::string filePath;
 		Segments	segments;
+		bool 		executing;
 		
 		std::unique_ptr<char> headerAndLoadCommandBytes;
 		
+		ModuleInfo ();
 		ModuleInfo (uintptr_t loadAddress,
 					const uuid_t* pUUID,
 					const std::string& filePath,
 					std::vector<SegmentInfo> segments,
+					bool executing,
 					std::unique_ptr<char[]> headerAndLoadCommandBytes);
 	};
+	
+	using ModuleInfos = std::map<uint64_t, ModuleInfo>;
 	
 	explicit ModuleList (mach_port_t taskPort);
 	
 	bool IsValid () const;
 	
 	size_t GetSize () const;
-	const ModuleInfo& GetModuleInfo (size_t index) const;
+	
+	ModuleInfos::const_iterator begin () const { return m_moduleInfos.begin (); }
+	ModuleInfos::const_iterator end () const { return m_moduleInfos.end (); }
+
+	bool GetModuleInfoForAddress (uint64_t address, ModuleInfo** pModuleInfoOut);
+	
+	bool MarkAsExecuting (uint64_t codeAddress);
 	
 private:
-	std::vector<ModuleInfo> m_moduleInfos;
+	ModuleInfos m_moduleInfos;
 	
 	void Invalidate ();
 };

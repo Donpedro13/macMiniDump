@@ -33,7 +33,7 @@ namespace MMD {
 namespace {
 
 
-std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t payloadOffset)
+std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t payloadOffset, const ModuleList& modules)
 {
 	// The structure of this payload is the following:
 	/*
@@ -69,8 +69,7 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	// Even though this looks pretty straightforward, it's not, because many (sub)structures are
 	//   referring to each other (offsets, sizes, etc.). This is why structures are not produced in order,
 	//   and why the code is so complex
-	
-	ModuleList modules (taskPort);
+
 	if (!modules.IsValid ())
 		return {};
 	
@@ -86,9 +85,8 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	size_t nSegments = 0;
 	size_t modulePathsSize = 0;
 	std::vector<std::vector<MachOCore::SegmentVMAddr>> segmentListList;
-	for (size_t i = 0; i < nModules; ++i) {
+	for (const auto& [loadAddr, moduleInfo] : modules) {
 		std::vector<MachOCore::SegmentVMAddr> segmentVMAddrs;
-		const ModuleList::ModuleInfo& moduleInfo = modules.GetModuleInfo (i);
 		modulePathsSize += moduleInfo.filePath.length () + sizeof '\0';
 		
 		std::cout << "Image" << "\n" << "\t" << moduleInfo.filePath << "\n\tLoad address: " << moduleInfo.loadAddress << "\n\tSegment Count: " << moduleInfo.segments.size () << std::endl;
@@ -126,16 +124,14 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	size_t currModulePathOffset = payloadOffset + payloadSize - modulePathsSize;
 	size_t currSegAddrsOffset = currModulePathOffset - segmentEntriesSize;
 	size_t currImageEntryMemOffset = offset;
-	for (size_t i = 0; i < nModules; ++i) {
-		const ModuleList::ModuleInfo& moduleInfo = modules.GetModuleInfo (i);
-		
+	for (const auto& [loadAddr, moduleInfo] : modules) {
 		MachOCore::ImageEntry imageEntry = {};
 		imageEntry.filepath_offset = currModulePathOffset;
 		memcpy (&imageEntry.uuid, &moduleInfo.uuid, sizeof imageEntry.uuid);
 		imageEntry.load_address = moduleInfo.loadAddress;
 		imageEntry.seg_addrs_offset = currSegAddrsOffset;
 		imageEntry.segment_count = moduleInfo.segments.size ();
-		imageEntry.reserved = 1;	// TODO this should only be set to 1 for modules that are currently executing
+		imageEntry.reserved = moduleInfo.executing ? 1 : 0;
 		
 		memcpy(&result[currImageEntryMemOffset], &imageEntry, sizeof imageEntry);
 		
@@ -156,8 +152,7 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	
 	// And finally, module path (zero-terminated) strings
 	size_t currModulePathMemOffset = payloadSize - modulePathsSize;
-	for (size_t i = 0; i < nModules; ++i) {
-		const ModuleList::ModuleInfo& moduleInfo = modules.GetModuleInfo (i);
+	for (const auto& [loadAddr, moduleInfo] : modules) {
 		strcpy (&result[currModulePathMemOffset], moduleInfo.filePath.c_str ());
 		
 		currModulePathMemOffset += moduleInfo.filePath.length () + sizeof '\0';
@@ -166,7 +161,7 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	return result;
 }
 
-bool AddPayloadsAndWrite (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder, IRandomAccessBinaryOStream* pOStream)
+bool AddPayloadsAndWrite (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder, const ModuleList& modules, IRandomAccessBinaryOStream* pOStream)
 {
 	// Add all load command payloads when needed, calculate data offsets, then write out core dump content
 	
@@ -189,7 +184,7 @@ bool AddPayloadsAndWrite (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuild
 	
 	uint64_t imageInfosPayloadOffset = 0;
 	pCoreBuilder->GetOffsetForNoteCommandPayload (MachOCore::AllImageInfosOwner, &imageInfosPayloadOffset);
-	std::vector<char> imageInfosPayload = CreateAllImageInfosPayload(taskPort, imageInfosPayloadOffset);
+	std::vector<char> imageInfosPayload = CreateAllImageInfosPayload(taskPort, imageInfosPayloadOffset, modules);
 	if (imageInfosPayload.empty ())
 		return false;
 	
@@ -206,7 +201,7 @@ bool AddPayloadsAndWrite (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuild
 	return pCoreBuilder->Build (pOStream);
 }
 
-bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder, CrashContext* pCrashContext /*= nullptr*/)
+bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder, ModuleList* pModules, CrashContext* pCrashContext /*= nullptr*/)
 {
 	thread_act_port_array_t threads;
 	mach_msg_type_number_t nThreads;
@@ -296,13 +291,13 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 
 		MachOCore::GPRPointers pointers (gpr);
 
-		MMD::WalkStack::SegmentCollectorVisitor segmentVisitor (pCoreBuilder);
-		MMD::WalkStack::LastBasePointerRecorder basePointerRecorderVisitor;
+		WalkStack::SegmentCollectorVisitor segmentVisitor (pCoreBuilder);
+		WalkStack::ExecutingModuleCollectorVisitor executingMarkerVisitor (pModules);
 		
-		MMD::WalkStack::WalkStack (taskPort,
-								   pointers.InstructionPointer().AsUInt64(),
-								   pointers.BasePointer().AsUInt64(),
-								   { &segmentVisitor, &basePointerRecorderVisitor });
+		WalkStack::WalkStack (taskPort,
+							  pointers.InstructionPointer().AsUInt64(),
+							  pointers.BasePointer().AsUInt64(),
+							  { &segmentVisitor, &executingMarkerVisitor });
 
 
 		uint64_t sp = pointers.StackPointer().AsUInt64();
@@ -389,13 +384,14 @@ bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStre
 	//  * we need to update offset fields in the load commands, and payloads
 	//  * then finally, we can write out the content itself
 	MachOCoreDumpBuilder coreBuilder;
-	if (!AddThreadsToCore (taskPort, &coreBuilder, pCrashContext))
+	ModuleList modules (taskPort);
+	if (!AddThreadsToCore (taskPort, &coreBuilder, &modules, pCrashContext))
 		return false;
 	
 	if (!AddNotesToCore (taskPort, &coreBuilder))
 		return false;
 	
-	if (!AddPayloadsAndWrite (taskPort, &coreBuilder, pOStream))
+	if (!AddPayloadsAndWrite (taskPort, &coreBuilder, modules, pOStream))
 		return false;
 	
 	return true;
