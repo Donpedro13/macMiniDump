@@ -2,6 +2,7 @@ SET(macMiniDump_sources
 		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MacMiniDump.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Includes/IRandomAccessBinaryOStream.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Includes/FileOStream.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Includes/Logging.hpp
 
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MacMiniDump.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/IRandomAccessBinaryOStream.cpp
@@ -28,7 +29,8 @@ SET(macMiniDump_sources
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/AddSegmentCommandFromProcessMemory.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/AddSegmentCommandFromProcessMemory.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/GetProtectionOf.cpp
-		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/RegionInfo.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/LoggingPrivate.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/Logging.cpp
 		)
 
 ADD_LIBRARY(macMiniDump ${macMiniDump_sources})

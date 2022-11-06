@@ -9,6 +9,7 @@
 
 #include "MacMiniDump.hpp"
 #include "FileOStream.hpp"
+#include "Logging.hpp"
 
 const std::string global1 = "This is a string!";
 std::string global2 = "Another string!";
@@ -41,25 +42,15 @@ void Function2 ()
 void Function1 ()
 {
 	global2 = "Tee-hee";
-	
-	int fd = open ("/Volumes/Dev/Dev/own.core", O_WRONLY);
-	/*int flags = fcntl (fd, F_GETFD);
-	int res = write (fd, "a", 2);
-	printf ("%d", res);
-	printf ("%d\n", flags);*/
-	//close (fd);
-	
 	Function2 ();
 	
 	std::thread t1 (Function3);
 	
 	sleep (2);
-	
-	//MMD::FileOStream fos ("/Volumes/Dev/Dev/own.core");
-	
 
-	//if(!MMD::MiniDumpWriteDump (mach_task_self (), &fos)) {
-	if(!MMD::MiniDumpWriteDump (mach_task_self (), fd)) {
+	
+	MMD::FileOStream fos ("/~/Documents/test.core");
+	if(!MMD::MiniDumpWriteDump (mach_task_self (), &fos)) {
 		std::cout << "MMD::MiniDumpWriteDump() has returned false" << std::endl;
 	} else {
 		std::cout << "Dump written." << std::endl;
