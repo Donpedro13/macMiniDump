@@ -6,10 +6,10 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <wordexp.h>
 
 #include "MacMiniDump.hpp"
 #include "FileOStream.hpp"
-#include "Logging.hpp"
 
 const std::string global1 = "This is a string!";
 std::string global2 = "Another string!";
@@ -48,8 +48,16 @@ void Function1 ()
 	
 	sleep (2);
 
-	
-	MMD::FileOStream fos ("/~/Documents/test.core");
+	const char* pCorePathUnexpanded = "~/Documents/test.core";
+	wordexp_t pCorePathExpanded;
+	wordexp (pCorePathUnexpanded, &pCorePathExpanded, 0);
+	std::string corePath (pCorePathExpanded.we_wordv[0]);
+	wordfree (&pCorePathExpanded);
+
+	int fd = open (corePath.c_str (), O_WRONLY | O_CREAT, 0666);
+	close (fd);
+
+	MMD::FileOStream fos (corePath.c_str ());
 	if(!MMD::MiniDumpWriteDump (mach_task_self (), &fos)) {
 		std::cout << "MMD::MiniDumpWriteDump() has returned false" << std::endl;
 	} else {
