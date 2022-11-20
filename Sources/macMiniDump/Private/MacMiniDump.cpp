@@ -124,23 +124,26 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	if (!modules.IsValid ())
 		return {};
 
-	const size_t nModules = modules.GetSize ();
-	MachOCore::AllImageInfosHeader header = {};
-	header.version = 1;
-	header.imgcount = nModules;	// Modules are id'd by index in the structure
-	header.entries_size = sizeof (MachOCore::ImageEntry);
-	header.entries_fileoff = payloadOffset + sizeof (MachOCore::AllImageInfosHeader);
+	const size_t				   nModules = modules.GetSize ();
+	MachOCore::AllImageInfosHeader header	= {};
+	header.version							= 1;
+	header.imgcount							= nModules; // Modules are id'd by index in the structure
+	header.entries_size						= sizeof (MachOCore::ImageEntry);
+	header.entries_fileoff					= payloadOffset + sizeof (MachOCore::AllImageInfosHeader);
 
 	// Prepare segment list of all modules (and while at it, calculate some of the space needed for the whole payload,
 	//   this info will be used later)
-	size_t nSegments = 0;
-	size_t modulePathsSize = 0;
+	size_t											   nSegments	   = 0;
+	size_t											   modulePathsSize = 0;
 	std::vector<std::vector<MachOCore::SegmentVMAddr>> segmentListList;
 	for (const auto& [loadAddr, moduleInfo] : modules) {
 		std::vector<MachOCore::SegmentVMAddr> segmentVMAddrs;
 		modulePathsSize += moduleInfo.filePath.length () + sizeof '\0';
 
-		std::cout << "Image" << "\n" << "\t" << moduleInfo.filePath << "\n\tLoad address: " << moduleInfo.loadAddress << "\n\tSegment Count: " << moduleInfo.segments.size () << std::endl;
+		std::cout << "Image"
+				  << "\n"
+				  << "\t" << moduleInfo.filePath << "\n\tLoad address: " << moduleInfo.loadAddress
+				  << "\n\tSegment Count: " << moduleInfo.segments.size () << std::endl;
 
 		const ModuleList::Segments& segments = moduleInfo.segments;
 		for (const auto& section : segments) {
@@ -148,22 +151,22 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 			strncpy (newVMAddr.segname, section.segmentName, sizeof section.segmentName);
 			newVMAddr.vmaddr = section.address;
 
-			std::cout << "Segment" << "\n" << "\t" << section.segmentName << "\n\tAddress: " << section.address << std::endl;
+			std::cout << "Segment"
+					  << "\n"
+					  << "\t" << section.segmentName << "\n\tAddress: " << section.address << std::endl;
 
 			segmentVMAddrs.push_back (newVMAddr);
 			++nSegments;
 		}
 
-		segmentListList.push_back(segmentVMAddrs);
+		segmentListList.push_back (segmentVMAddrs);
 	}
 
 	// Tally how much space will be needed for the whole payload
-	const size_t imageEntriesSize = nModules * sizeof (MachOCore::ImageEntry);
+	const size_t imageEntriesSize	= nModules * sizeof (MachOCore::ImageEntry);
 	const size_t segmentEntriesSize = nSegments * sizeof (MachOCore::SegmentVMAddr);
-	const size_t payloadSize = sizeof (MachOCore::AllImageInfosHeader) +
-							   imageEntriesSize +
-							   segmentEntriesSize +
-							   modulePathsSize;
+	const size_t payloadSize =
+		sizeof (MachOCore::AllImageInfosHeader) + imageEntriesSize + segmentEntriesSize + modulePathsSize;
 	// Allocate payload, then lay out the data
 	std::vector<char> result (payloadSize);
 
@@ -172,19 +175,19 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	memcpy (&result[0], &header, sizeof header);
 	offset += sizeof header;
 
-	size_t currModulePathOffset = payloadOffset + payloadSize - modulePathsSize;
-	size_t currSegAddrsOffset = currModulePathOffset - segmentEntriesSize;
+	size_t currModulePathOffset	   = payloadOffset + payloadSize - modulePathsSize;
+	size_t currSegAddrsOffset	   = currModulePathOffset - segmentEntriesSize;
 	size_t currImageEntryMemOffset = offset;
 	for (const auto& [loadAddr, moduleInfo] : modules) {
 		MachOCore::ImageEntry imageEntry = {};
-		imageEntry.filepath_offset = currModulePathOffset;
+		imageEntry.filepath_offset		 = currModulePathOffset;
 		memcpy (&imageEntry.uuid, &moduleInfo.uuid, sizeof imageEntry.uuid);
-		imageEntry.load_address = moduleInfo.loadAddress;
+		imageEntry.load_address		= moduleInfo.loadAddress;
 		imageEntry.seg_addrs_offset = currSegAddrsOffset;
-		imageEntry.segment_count = moduleInfo.segments.size ();
-		imageEntry.reserved = moduleInfo.executing ? 1 : 0;
+		imageEntry.segment_count	= moduleInfo.segments.size ();
+		imageEntry.reserved			= moduleInfo.executing ? 1 : 0;
 
-		memcpy(&result[currImageEntryMemOffset], &imageEntry, sizeof imageEntry);
+		memcpy (&result[currImageEntryMemOffset], &imageEntry, sizeof imageEntry);
 
 		currModulePathOffset += moduleInfo.filePath.size () + sizeof '\0';
 		currSegAddrsOffset += imageEntry.segment_count * sizeof (MachOCore::SegmentVMAddr);
@@ -212,51 +215,61 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	return result;
 }
 
-bool AddPayloadsAndWrite (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder, const ModuleList& modules, IRandomAccessBinaryOStream* pOStream)
+bool AddPayloadsAndWrite (mach_port_t				  taskPort,
+						  MachOCoreDumpBuilder*		  pCoreBuilder,
+						  const ModuleList&			  modules,
+						  IRandomAccessBinaryOStream* pOStream)
 {
 	// Add all load command payloads when needed, calculate data offsets, then write out core dump content
 
 	// Addressable bits of the address space of the process
 	uint32_t nAddrabbleBits = 0;
-	size_t len = sizeof nAddrabbleBits;
-	  if (  (::sysctlbyname ("machdep.virtual_address_size",     &nAddrabbleBits, &len, NULL, 0) != 0)
-	  	 && (::sysctlbyname ("machdep.cpu.address_bits.virtual", &nAddrabbleBits, &len, NULL, 0) != 0) )
+	size_t	 len			= sizeof nAddrabbleBits;
+	if ((::sysctlbyname ("machdep.virtual_address_size", &nAddrabbleBits, &len, NULL, 0) != 0) &&
+		(::sysctlbyname ("machdep.cpu.address_bits.virtual", &nAddrabbleBits, &len, NULL, 0) != 0))
 		return false;
 
 	MachOCore::AddrableBitsInfo abInfo = {};
-	abInfo.version = 3;
-	abInfo.nBits = nAddrabbleBits;
+	abInfo.version					   = 3;
+	abInfo.nBits					   = nAddrabbleBits;
 	pCoreBuilder->AddDataProviderForNoteCommand (MachOCore::AddrableBitsOwner,
-												std::make_unique<DataProvider> (new CopiedDataPtr (&abInfo, sizeof abInfo), sizeof abInfo));
+												 std::make_unique<DataProvider> (new CopiedDataPtr (&abInfo,
+																									sizeof abInfo),
+																				 sizeof abInfo));
 
 	// All image infos
-	// The paylod of all image infos is dependent of the size of all load commands, so we have to "finalize" them before creating it
+	// The paylod of all image infos is dependent of the size of all load commands, so we have to "finalize" them before
+	// creating it
 	pCoreBuilder->FinalizeLoadCommands ();
 
 	uint64_t imageInfosPayloadOffset = 0;
 	pCoreBuilder->GetOffsetForNoteCommandPayload (MachOCore::AllImageInfosOwner, &imageInfosPayloadOffset);
-	std::vector<char> imageInfosPayload = CreateAllImageInfosPayload(taskPort, imageInfosPayloadOffset, modules);
+	std::vector<char> imageInfosPayload = CreateAllImageInfosPayload (taskPort, imageInfosPayloadOffset, modules);
 	if (imageInfosPayload.empty ())
 		return false;
 
-	pCoreBuilder->AddDataProviderForNoteCommand(MachOCore::AllImageInfosOwner,
-												std::make_unique<DataProvider> (new CopiedDataPtr (&imageInfosPayload[0], imageInfosPayload.size ()),
+	pCoreBuilder
+		->AddDataProviderForNoteCommand (MachOCore::AllImageInfosOwner,
+										 std::make_unique<DataProvider> (new CopiedDataPtr (&imageInfosPayload[0],
+																							imageInfosPayload.size ()),
 																		 imageInfosPayload.size ()));
 
-	
-	for (size_t i = 0; i < pCoreBuilder->GetNumberOfSegmentCommands(); ++i) {
-		segment_command_64* pSegment = pCoreBuilder->GetSegmentCommand(i);
+	for (size_t i = 0; i < pCoreBuilder->GetNumberOfSegmentCommands (); ++i) {
+		segment_command_64* pSegment = pCoreBuilder->GetSegmentCommand (i);
 		pCoreBuilder->GetOffsetForSegmentCommandPayload (pSegment->vmaddr, &pSegment->fileoff);
 	}
 
 	return pCoreBuilder->Build (pOStream);
 }
 
-bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder, ModuleList* pModules, CrashContext* pCrashContext /*= nullptr*/)
+bool AddThreadsToCore (mach_port_t			 taskPort,
+					   MachOCoreDumpBuilder* pCoreBuilder,
+					   ModuleList*			 pModules,
+					   CrashContext*		 pCrashContext /*= nullptr*/)
 {
 	thread_act_port_array_t threads;
-	mach_msg_type_number_t nThreads;
-	mach_port_t thisThread = mach_thread_self ();
+	mach_msg_type_number_t	nThreads;
+	mach_port_t				thisThread = mach_thread_self ();
 
 	if (task_threads (taskPort, &threads, &nThreads) != KERN_SUCCESS)
 		return false;
@@ -276,17 +289,17 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 		};
 
 #ifdef __x86_64__
-		x86_thread_state64_t ts;
-		x86_exception_state64_t es;
-		mach_msg_type_number_t gprCount = x86_THREAD_STATE64_COUNT;
-		mach_msg_type_number_t excCount = x86_EXCEPTION_STATE64_COUNT;
+		x86_thread_state64_t		ts;
+		x86_exception_state64_t		es;
+		mach_msg_type_number_t		gprCount  = x86_THREAD_STATE64_COUNT;
+		mach_msg_type_number_t		excCount  = x86_EXCEPTION_STATE64_COUNT;
 		const thread_state_flavor_t gprFlavor = x86_THREAD_STATE64;
 		const thread_state_flavor_t excFlavor = x86_EXCEPTION_STATE64;
 #elif defined __arm64__
-		arm_thread_state64_t ts;
-		arm_exception_state64_t es;
-		mach_msg_type_number_t gprCount = ARM_THREAD_STATE64_COUNT;
-		mach_msg_type_number_t excCount = ARM_EXCEPTION_STATE64_COUNT;
+		arm_thread_state64_t		ts;
+		arm_exception_state64_t		es;
+		mach_msg_type_number_t		gprCount  = ARM_THREAD_STATE64_COUNT;
+		mach_msg_type_number_t		excCount  = ARM_EXCEPTION_STATE64_COUNT;
 		const thread_state_flavor_t gprFlavor = ARM_THREAD_STATE64;
 		const thread_state_flavor_t excFlavor = ARM_EXCEPTION_STATE64;
 #endif
@@ -295,8 +308,8 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 
 		// If the thread is the crashing one, start stackwalking etc. from the provided crash context
 		const pthread_t pthread = pthread_from_mach_thread_np (threads[i]);
-		uint64_t tid = 0;
-		if (pthread_threadid_np(pthread, &tid) != 0)
+		uint64_t		tid		= 0;
+		if (pthread_threadid_np (pthread, &tid) != 0)
 			syslog (LOG_NOTICE, "Unable to get tid for thread #%d!", i);
 
 		// FIXME assume that if the target process has crashed, it's the main thread
@@ -309,10 +322,10 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 		} else {
 			syslog (LOG_NOTICE, "Adding thread (tid %" PRIu64 " )", tid);
 
-			if (thread_get_state (threads[i], gprFlavor, (thread_state_t)&ts, &gprCount) != KERN_SUCCESS)
+			if (thread_get_state (threads[i], gprFlavor, (thread_state_t) &ts, &gprCount) != KERN_SUCCESS)
 				continue;
 
-			if (thread_get_state (threads[i], excFlavor, (thread_state_t)&es, &excCount) != KERN_SUCCESS)
+			if (thread_get_state (threads[i], excFlavor, (thread_state_t) &es, &excCount) != KERN_SUCCESS)
 				continue;
 		}
 
@@ -329,14 +342,14 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 		}
 
 		MachOCore::GPR gpr;
-		gpr.kind = MachOCore::RegSetKind::GPR;
+		gpr.kind	   = MachOCore::RegSetKind::GPR;
 		gpr.nWordCount = sizeof ts / sizeof (uint32_t);
-		memcpy(&gpr.gpr, &ts, sizeof ts);
+		memcpy (&gpr.gpr, &ts, sizeof ts);
 
 		MachOCore::EXC exc;
-		exc.kind = MachOCore::RegSetKind::EXC;
+		exc.kind	   = MachOCore::RegSetKind::EXC;
 		exc.nWordCount = sizeof es / sizeof (uint32_t);
-		memcpy(&exc.exc, &es, sizeof es);
+		memcpy (&exc.exc, &es, sizeof es);
 
 		pCoreBuilder->AddThreadCommand (gpr, exc);
 
@@ -365,7 +378,7 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 
 		uint64_t		 sp = pointers.StackPointer ().AsUInt64 ();
 		MemoryRegionInfo regionInfo;
-		if (!memoryRegions.GetRegionInfoForAddress(sp, &regionInfo)) {
+		if (!memoryRegions.GetRegionInfoForAddress (sp, &regionInfo)) {
 			syslog (LOG_WARNING, "Stack pointer of thread #%d points to invalid memory: %llu", i, sp);
 
 			continue;
@@ -374,8 +387,8 @@ bool AddThreadsToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder,
 		if (regionInfo.type != MemoryRegionType::Stack)
 			syslog (LOG_WARNING, "Stack pointer of thread #%d points to non-stack memory: %llu", i, sp);
 
-		const uint64_t stackStart = regionInfo.vmaddr + regionInfo.vmsize;
-		size_t lengthInBytes = stackStart - sp;
+		const uint64_t stackStart	 = regionInfo.vmaddr + regionInfo.vmsize;
+		size_t		   lengthInBytes = stackStart - sp;
 
 		// FIXME: in case of a "self dump", the main thread's stack memory is not included, because it might have
 		// changed since the state was captured (above). Should we capture it nonetheless, we would get a garbled call
@@ -398,7 +411,7 @@ bool AddNotesToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 	return true;
 }
 
-}	// namespace
+} // namespace
 
 bool MiniDumpWriteDump (mach_port_t taskPort, FILE* pFile, CrashContext* pCrashContext /*= nullptr*/)
 {
@@ -416,7 +429,9 @@ bool MiniDumpWriteDump (mach_port_t taskPort, int fd, CrashContext* pCrashContex
 	return MiniDumpWriteDump (taskPort, &fos, pCrashContext);
 }
 
-bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStream, CrashContext* pCrashContext /*= nullptr*/)
+bool MiniDumpWriteDump (mach_port_t					taskPort,
+						IRandomAccessBinaryOStream* pOStream,
+						CrashContext*				pCrashContext /*= nullptr*/)
 {
 	assert (pOStream != nullptr);
 
@@ -456,7 +471,7 @@ bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStre
 	//  * we need to update offset fields in the load commands, and payloads
 	//  * then finally, we can write out the content itself
 	MachOCoreDumpBuilder coreBuilder;
-	ModuleList modules (taskPort);
+	ModuleList			 modules (taskPort);
 	if (!AddThreadsToCore (taskPort, &coreBuilder, &modules, pCrashContext))
 		return false;
 
@@ -469,4 +484,4 @@ bool MiniDumpWriteDump (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStre
 	return true;
 }
 
-}	// namespace MMD
+} // namespace MMD

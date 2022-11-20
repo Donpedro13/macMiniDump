@@ -27,18 +27,18 @@ struct AllImageInfosHeader {
 };
 
 struct ImageEntry {
-	uint64_t filepath_offset = UINT64_MAX;
-	uuid_t uuid = {};
-	uint64_t load_address = UINT64_MAX;
+	uint64_t filepath_offset  = UINT64_MAX;
+	uuid_t	 uuid			  = {};
+	uint64_t load_address	  = UINT64_MAX;
 	uint64_t seg_addrs_offset = UINT64_MAX;
-	uint32_t segment_count = 0;
-	uint32_t reserved = 0;
+	uint32_t segment_count	  = 0;
+	uint32_t reserved		  = 0;
 };
 
 struct SegmentVMAddr {
-	char segname[16] = {};
-	uint64_t vmaddr = UINT64_MAX;
-	uint64_t unused = 0;
+	char	 segname[16] = {};
+	uint64_t vmaddr		 = UINT64_MAX;
+	uint64_t unused		 = 0;
 };
 
 enum class RegSetKind : uint32_t {
@@ -52,8 +52,8 @@ enum class RegSetKind : uint32_t {
 };
 struct GPR {
 	RegSetKind kind;
-	uint32_t nWordCount;
-	
+	uint32_t   nWordCount;
+
 #ifdef __x86_64__
 	x86_thread_state64_t gpr;
 #elif defined __arm64__
@@ -63,8 +63,8 @@ struct GPR {
 
 struct EXC {
 	RegSetKind kind;
-	uint32_t nWordCount;
-	
+	uint32_t   nWordCount;
+
 #ifdef __x86_64__
 	x86_exception_state64_t exc;
 #elif defined __arm64__
@@ -74,12 +74,12 @@ struct EXC {
 
 class ThreadInfo final {
 private:
-	bool suspendWhileInspecting;
+	bool		 suspendWhileInspecting;
 	thread_act_t threads_i;
 
 public:
 #ifdef __x86_64__
-	x86_thread_state64_t ts;
+	x86_thread_state64_t	ts;
 	x86_exception_state64_t es;
 #elif defined __arm64__
 	arm_thread_state64_t ts;
@@ -87,14 +87,14 @@ public:
 #endif
 	mach_msg_type_number_t gprCount;
 	mach_msg_type_number_t excCount;
-	thread_state_flavor_t gprFlavor;
-	thread_state_flavor_t excFlavor;
+	thread_state_flavor_t  gprFlavor;
+	thread_state_flavor_t  excFlavor;
 
 	GPR gpr;
 	EXC exc;
 
 	ThreadInfo (thread_act_t, bool suspendWhileInspecting);
-	~ThreadInfo();
+	~ThreadInfo ();
 
 	bool healthy;
 };
@@ -104,13 +104,13 @@ private:
 	std::unique_ptr<uint8_t[]> ptr;
 
 public:
-	explicit Pointer (size_t widthInBytes, void *ptr);
+	explicit Pointer (size_t widthInBytes, void* ptr);
 	explicit Pointer (uint64_t ptr);
 
-	void* 	 AsGenericPointer ();
+	void*	 AsGenericPointer ();
 	uint64_t AsUInt64 ();
 
-	template <typename T>
+	template<typename T>
 	T As ();
 
 	size_t WidthInBytes;
@@ -133,7 +133,7 @@ public:
 extern const char* AddrableBitsOwner;
 extern const char* AllImageInfosOwner;
 
-}	// namespace MachOCore
-}	// namespace MMD
+} // namespace MachOCore
+} // namespace MMD
 
-#endif	// MMD_MACHOCOREINTERNAL
+#endif // MMD_MACHOCOREINTERNAL

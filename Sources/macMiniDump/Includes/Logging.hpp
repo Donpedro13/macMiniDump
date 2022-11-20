@@ -22,6 +22,6 @@ using LogCallback = std::function<void (LogSeverity severity, const std::string&
 void SetLogCallback (LogCallback newCallback);
 void SetMinLogSeverity (LogSeverity minSeverity);
 
-}	// namespace MMD
+} // namespace MMD
 
-#endif	// MMD_LOGGING
+#endif // MMD_LOGGING

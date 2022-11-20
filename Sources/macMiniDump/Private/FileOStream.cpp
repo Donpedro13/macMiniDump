@@ -1,13 +1,11 @@
 #include "FileOStream.hpp"
 
-#include <unistd.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 namespace MMD {
 
-FileOStream::FileOStream (FILE* pFile): IRandomAccessBinaryOStream (), m_fd (fileno (pFile))
-{
-}
+FileOStream::FileOStream (FILE* pFile): IRandomAccessBinaryOStream (), m_fd (fileno (pFile)) {}
 
 FileOStream::FileOStream (int fd): m_fd (fd)
 {
@@ -19,7 +17,7 @@ FileOStream::FileOStream (int fd): m_fd (fd)
 
 FileOStream::FileOStream (const std::string filePath)
 {
-	m_fd = open(filePath.c_str (), O_WRONLY);
+	m_fd = open (filePath.c_str (), O_WRONLY);
 }
 
 bool FileOStream::Write (const void* pData, size_t size)
@@ -31,7 +29,7 @@ bool FileOStream::Flush ()
 {
 	return fsync (m_fd);
 }
-	
+
 size_t FileOStream::GetPosition ()
 {
 	return lseek (m_fd, 0, SEEK_CUR);
@@ -45,10 +43,10 @@ void FileOStream::SetPosition (size_t newPos)
 size_t FileOStream::GetSize ()
 {
 	const size_t prevPos = GetPosition ();
-	const size_t size = lseek (m_fd, 0, SEEK_END);
-	
+	const size_t size	 = lseek (m_fd, 0, SEEK_END);
+
 	lseek (m_fd, prevPos, SEEK_SET);
-	
+
 	return size;
 }
 
@@ -71,9 +69,9 @@ void FileOStream::Cleanup ()
 {
 	if (!IsValid ())
 		return;
-	
+
 	close (m_fd);
 	m_fd = -1;
 }
 
-}	// namespace MMD
+} // namespace MMD

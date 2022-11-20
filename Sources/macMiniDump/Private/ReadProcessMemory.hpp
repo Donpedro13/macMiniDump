@@ -13,6 +13,6 @@ namespace MMD {
 std::unique_ptr<char[]> ReadProcessMemory (mach_port_t taskPort, uintptr_t address, size_t size);
 bool ReadProcessMemoryString (mach_port_t taskPort, uintptr_t address, size_t maxSize, std::string* pStringOut);
 
-}	// namespace MMD
+} // namespace MMD
 
-#endif	// MMD_READPROCESSMEMORY
+#endif // MMD_READPROCESSMEMORY

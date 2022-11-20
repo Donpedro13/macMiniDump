@@ -16,30 +16,30 @@ public:
 	FileOStream () = delete;
 	FileOStream (FILE* pFile);
 	explicit FileOStream (int fd);
-	explicit FileOStream (const std::string filePath);	// The file at this path must exist
-	
+	explicit FileOStream (const std::string filePath); // The file at this path must exist
+
 	// Inherited from IRandomAccessBinaryOStream
 	virtual bool Write (const void* pData, size_t size) override;
-	
+
 	virtual bool Flush () override;
-	
+
 	virtual size_t GetPosition () override;
-	virtual void SetPosition (size_t newPos) override;
-	
+	virtual void   SetPosition (size_t newPos) override;
+
 	virtual size_t GetSize () override;
-	virtual bool SetSize (size_t newSize) override;
-	
+	virtual bool   SetSize (size_t newSize) override;
+
 	virtual ~FileOStream ();
-	
+
 	// Miscellaneous
 	bool IsValid () const;
-	
+
 private:
 	int m_fd;
-	
+
 	void Cleanup ();
 };
 
-}	// namespace MMD
+} // namespace MMD
 
-#endif	// MMD_FILEOSTREAM
+#endif // MMD_FILEOSTREAM

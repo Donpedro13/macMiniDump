@@ -12,7 +12,7 @@ extern LogSeverity g_minSeverity;
 
 void LogLine (LogSeverity severity, const std::string& logLine);
 
-}	// Impl
+} // namespace Impl
 
 inline void LogLine (LogSeverity severity, const std::string& logLine)
 {
@@ -22,6 +22,6 @@ inline void LogLine (LogSeverity severity, const std::string& logLine)
 		Impl::LogLine (severity, logLine);
 }
 
-}	// namespace MMD
+} // namespace MMD
 
 #endif // MMD_LOGGING_PRIVATE

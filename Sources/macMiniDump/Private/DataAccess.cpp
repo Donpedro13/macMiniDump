@@ -7,4 +7,4 @@ CopiedDataPtr::CopiedDataPtr (const void* pData, size_t size): m_pData (new char
 	memcpy (m_pData.get (), pData, size);
 }
 
-}	// namespace MMD
+} // namespace MMD

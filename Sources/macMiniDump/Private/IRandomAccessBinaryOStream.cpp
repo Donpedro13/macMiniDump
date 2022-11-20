@@ -2,8 +2,7 @@
 
 namespace MMD {
 
-IRandomAccessBinaryOStream::IRandomAccessBinaryOStream () = default;
+IRandomAccessBinaryOStream::IRandomAccessBinaryOStream ()  = default;
 IRandomAccessBinaryOStream::~IRandomAccessBinaryOStream () = default;
 
-}	// namespace MMD
-
+} // namespace MMD

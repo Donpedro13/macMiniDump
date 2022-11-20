@@ -13,7 +13,7 @@ std::string SeverityToString (LogSeverity severity)
 
 		case LogSeverity::Info:
 			return "INFO";
-			
+
 		case LogSeverity::Warning:
 			return "WARNING";
 
@@ -36,24 +36,23 @@ void DefaultLogCallback (LogSeverity severity, const std::string& message)
 
 LogCallback g_logCallback = DefaultLogCallback;
 
-}	// namespace
+} // namespace
 
 namespace Impl {
 
-LogSeverity g_minSeverity = 
+LogSeverity g_minSeverity =
 #ifdef _DEBUG
-								LogSeverity::Debug;	
+	LogSeverity::Debug;
 #else
-								LogSeverity::MinimumDoNotUse;
+	LogSeverity::MinimumDoNotUse;
 #endif
-
 
 void LogLine (LogSeverity severity, const std::string& logLine)
 {
 	g_logCallback (severity, logLine);
 }
 
-}	// Impl
+} // namespace Impl
 
 void SetLogCallback (LogCallback newCallback)
 {
@@ -65,4 +64,4 @@ void SetMinLogSeverity (LogSeverity minSeverity)
 	Impl::g_minSeverity = minSeverity;
 }
 
-}	// namespace MMD
+} // namespace MMD
