@@ -1,0 +1,398 @@
+/*****************************************************************************
+ * core.hsl - Structure definitions for the .core format for macOS
+ *
+ * This file can be used with Breakpoint Software's Hex Workshop, a commercial
+ * hex editor for Windows: http://www.hexworkshop.com
+ *
+ *****************************************************************************
+ */
+
+#include "standard-types.hsl"
+
+#pragma displayname("Core (*.core)") ;
+#pragma fileextensions(".core") ;
+
+#pragma byteorder(little_endian)
+
+#pragma enumsize(4)
+#pragma enumsign("unsigned")
+typedef enum MachOMagic
+{
+    MH_MAGIC_64 = 0xFEEDFACF,
+    MH_CIGAM_64 = 0xCFFAEDFE
+} MachOMagic;
+
+#pragma enumsize(4)
+#pragma enumsign("signed")
+typedef enum MachOCpuType
+{
+    MH_CPU_ANY = -1,
+    MH_CPU_x86 = 7,
+    MH_CPU_ABI_64 = 0x1000000,
+    MH_CPU_x86_64 = 0x1000007,
+    MH_CPU_ARM = 12,
+    MH_CPU_ARM64 = 0x100000C
+} MachOCpuType;
+
+typedef enum MachOFileType
+{
+    MH_OBJECT = 1,
+    MH_EXECUTE = 2,
+    MH_FVMLIB = 3,
+    MH_CORE = 4,
+    MH_PRELOAD = 5,
+    MH_DYLIB = 6,
+    MH_DYLINKER = 7,
+    MH_BUNDLE = 8
+    // and some others...
+} MachOFileType;
+
+typedef enum LCType
+{
+    LC_SEGMENT = 1,
+    LC_SYMTAB = 2,
+    LC_SYMSEG = 3,
+    LC_THREAD = 4,
+    LC_UNIXTHREAD = 5,
+    LC_LOADFVMLIB = 6
+    LC_IDFVMLIB = 7,
+    LC_IDENT = 8,
+    LC_FVMFILE = 9,
+    LC_PREPAGE = 10,
+    LC_DSYMTAB = 11,
+    LV_LOAD_DYLIB = 12,
+    LC_ID_DYLIB = 13,
+    LC_LOAD_DYLINKER = 14,
+    LC_ID_DYLINKER = 15
+    // and some others...
+    LC_SEGMENT_64 = 0x19,
+    LC_UUID = 0x1b,
+    // and some others...
+    LC_NOTE = 0x31
+    // and many others...
+
+} MachOFileType;
+
+typedef enum RegSetKind_x86_64
+{
+    RS_X86_64_GPR = 4,
+    RS_X86_64_FPU = 5,
+    RS_X86_64_EXC = 6
+
+} RegSetKind_x86_64;
+
+typedef enum RegSetKind_Arm64
+{
+    RS_ARM64_GPR = 6,
+    RS_ARM64_FPU = 17,
+    RS_ARM64_EXC = 7
+
+} RegSetKind_Arm64;
+
+struct mach_header_64
+{
+    MachOMagic magic;
+    MachOCpuType cputype;
+    DWORD cpusubtype;
+    MachOFileType filetype;
+    DWORD ncmds;
+    DWORD sizeofcmds;
+    DWORD flags;
+    DWORD reserved;
+
+    // Verify magic
+    __verify((magic == MH_MAGIC_64) || (magic == MH_CIGAM_64)) ;
+} ;
+
+struct load_command
+{
+    DWORD cmd;
+    DWORD cmdsize;
+} ;
+
+struct uuid_command
+{
+    DWORD cmd;
+    DWORD cmdsize;
+    BYTE  uuid[16];
+} ;
+
+struct note_command
+{
+    DWORD cmd;
+    DWORD cmdsize;
+    char  data_owner[16];
+    UQUAD offset;
+    UQUAD size;
+} ;
+
+struct thread_command
+{
+    DWORD cmd;
+    DWORD cmdsize;
+    BYTE data[cmdsize - 8];
+} ;
+
+struct thread_command_x86_64_GPR
+{
+    // GPR "header"
+    RegSetKind_x86_64 kind;
+    DWORD NWordCount;   // Data size in words (4-bytes)
+    // GPR "data"
+    UQUAD rax;
+    UQUAD rbx;
+    UQUAD rcx;
+    UQUAD rdx;
+    UQUAD rdi;
+    UQUAD rsi;
+    UQUAD rbp;
+    UQUAD rsp;
+    UQUAD r8;
+    UQUAD r9;
+    UQUAD r10;
+    UQUAD r11;
+    UQUAD r12;
+    UQUAD r13;
+    UQUAD r14;
+    UQUAD r15;
+    UQUAD rip;
+    UQUAD rflags;
+    UQUAD cs;
+    UQUAD fs;
+    UQUAD gs; 
+
+    __verify(kind == RS_X86_64_GPR);
+    __verify(NWordCount == 42);
+} ;
+
+struct thread_command_x86_64_EXC
+{
+    // EXC "header"
+    RegSetKind_x86_64 kind;
+    DWORD NWordCount;   // Data size in words (4-bytes)
+    // EXC "data"
+    DWORD trapno;
+    DWORD err;
+    UQUAD faultvaddr;
+
+    __verify(kind == RS_X86_64_EXC);
+    __verify(NWordCount == 4);
+} ;
+
+struct thread_command_x86_64
+{
+    DWORD cmd;
+    DWORD cmdsize;
+    struct thread_command_x86_64_GPR GPR;
+    struct thread_command_x86_64_EXC EXC;
+} ;
+
+struct thread_command_arm64_GPR
+{
+    // GPR "header"
+    RegSetKind_Arm64 kind;
+    DWORD NWordCount;   // Data size in words (4-bytes)
+    // GPR "data"
+    UQUAD x0;
+    UQUAD x1;
+    UQUAD x2;
+    UQUAD x3;
+    UQUAD x4;
+    UQUAD x5;
+    UQUAD x6;
+    UQUAD x7;
+    UQUAD x8;
+    UQUAD x9;
+    UQUAD x10;
+    UQUAD x11;
+    UQUAD x12;
+    UQUAD x13;
+    UQUAD x14;
+    UQUAD x15;
+    UQUAD x16;
+    UQUAD x17;
+    UQUAD x18;
+    UQUAD x19;
+    UQUAD x20;
+    UQUAD x21;
+    UQUAD x22;
+    UQUAD x23;
+    UQUAD x24;
+    UQUAD x25;
+    UQUAD x26;
+    UQUAD x27;
+    UQUAD x28;
+
+    UQUAD fp;
+    UQUAD lr;
+    UQUAD sp;
+    UQUAD pc;
+    DWORD cpsr;
+    DWORD flags;
+
+    __verify(kind == RS_ARM64_GPR);
+    __verify(NWordCount == 68);
+} ;
+
+struct thread_command_arm64_EXC
+{
+    // EXC "header"
+    RegSetKind_Arm64 kind;
+    DWORD NWordCount;   // Data size in words (4-bytes)
+    // EXC "data"
+    UQUAD far;
+    DWORD esr;
+    DWORD exception;
+    
+    __verify(kind == RS_ARM64_EXC);
+    __verify(NWordCount == 4);
+} ;
+
+struct thread_command_arm64
+{
+    DWORD cmd;
+    DWORD cmdsize;
+    struct thread_command_arm64_GPR GPR;
+    struct thread_command_arm64_EXC EXC;
+} ;
+
+struct segment_command_64
+{
+    DWORD cmd;
+    DWORD cmdsize;
+    char  segname[16];
+    UQUAD vmaddr;
+    UQUAD vmsize;
+    UQUAD fileoff;
+    UQUAD filesize;
+    DWORD maxprot;
+    DWORD initprot;
+    DWORD nsects;
+    DWORD flags;
+} ;
+
+struct load_command_unknown
+{
+    DWORD cmd;
+    DWORD cmdsize;
+    BYTE data[cmdsize - 8];
+} ;
+
+function AutoParseMachOFile
+{
+    UQWord pos = 0 ;
+    UQWord end = __getDocSize() ;
+
+
+    // Add MachO Header
+    pos += __addStructureAt(pos, "mach_header_64", "") ;
+    DWORD nCmds = __getUDWordAt(16);
+    DWORD sizeOfCmds = __getUDWordAt(20);
+
+    DWORD handledCmds = 0;
+
+    while (handledCmds < nCmds)
+    {
+        DWORD cmd = __getUDWordAt(pos);
+        switch (cmd)
+        {
+        case LCType.LC_UUID:
+            pos += __addStructureAt(pos, "uuid_command", "") ;
+            break ;
+        case LCType.LC_NOTE:
+            pos += __addStructureAt(pos, "note_command", "") ;
+            break ;
+        case LCType.LC_THREAD:
+            pos += __addStructureAt(pos, "thread_command_arm64", "") ;
+            break;
+        case LCType.LC_SEGMENT_64:
+            pos += __addStructureAt(pos, "segment_command_64", "") ;
+            break ;
+        default:
+            pos += __addStructureAt(pos, "load_command_unknown", "") ;
+            break ;
+        } ;
+
+        handledCmds++;
+    } ;
+}
+
+// Addrable bits payload
+
+struct AddrableBits
+{
+    DWORD version;
+    DWORD nBits;
+    UQUAD unused;
+} ;
+
+function ParseAddrableBitsNote
+{
+    UQWord caret = __getCaretPos() ;
+    UQWord payloadOffset = __getUQWordAt(caret + 24);
+    __addStructureAt(payloadOffset, "AddrableBits", "") ;
+}
+
+// All image infos payload
+
+struct ImageEntry {
+    UQUAD filepath_offset;
+    BYTE  uuid[16];
+    UQUAD load_address;
+    UQUAD seg_addrs_offset;
+    DWORD segment_count;
+    DWORD reserved;
+} ;
+
+struct ModulePath {
+   zstring path; 
+} ;
+
+struct SegmentVMAddr {
+   char  segname[16];
+   UQUAD vmaddr;
+   UQUAD unused;
+} ;
+
+struct AllImageInfoHeader
+{
+    DWORD version;
+    DWORD imgCount;
+    UQUAD entries_fileoff;
+    DWORD entries_size;
+    DWORD reserved;
+} ;
+
+function ParseAllImageInfosNote
+{
+    UQWord caret = __getCaretPos() ;
+    UQWord payloadOffset = __getUQWordAt(caret + 24);
+
+    UQWord firstImageEntryOffset = payloadOffset + __addStructureAt(payloadOffset, "AllImageInfoHeader", "") ;
+
+    DWORD imgCount = __getUDWordAt(payloadOffset + 4);
+    DWORD segCount = 0;
+
+    // We add image entries and module path in two separate passes, because the order of addition is the order of display
+    UQWord currImageEntryOffset = firstImageEntryOffset;
+    for (DWORD i = 0; i < imgCount; i++)
+    {
+        segCount += __getUDWordAt(currImageEntryOffset + 40);
+        currImageEntryOffset += __addStructureAt(currImageEntryOffset, "ImageEntry", "") ;
+    } ;
+
+    DWORD currSegmentOffset = currImageEntryOffset;
+    for (DWORD j = 0; j < segCount; j++)
+    {
+        currSegmentOffset += __addStructureAt(currSegmentOffset, "SegmentVMAddr", "") ;
+    } ;    
+
+    currImageEntryOffset = firstImageEntryOffset;
+    UQWord currModulePathOffset = __getUQWordAt(currImageEntryOffset);
+    for (DWORD k = 0; k < imgCount; k++)
+    {
+        UQWord modulePathOffset = __getUQWordAt(currImageEntryOffset);
+        currImageEntryOffset += 48;
+        currModulePathOffset += modulePathOffset + __addStructureAt(modulePathOffset, "ModulePath", "") ;
+    } ;
+}
