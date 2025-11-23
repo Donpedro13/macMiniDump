@@ -1,8 +1,10 @@
 #include "StackWalk.hpp"
 
-#include "ReadProcessMemory.hpp"
-
 #include <syslog.h>
+
+#include <cassert>
+
+#include "ReadProcessMemory.hpp"
 
 namespace MMD {
 namespace {

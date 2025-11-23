@@ -127,7 +127,7 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	const size_t				   nModules = modules.GetSize ();
 	MachOCore::AllImageInfosHeader header	= {};
 	header.version							= 1;
-	header.imgcount							= nModules; // Modules are id'd by index in the structure
+	header.imgcount							= (uint32_t) (nModules); // Modules are id'd by index in the structure
 	header.entries_size						= sizeof (MachOCore::ImageEntry);
 	header.entries_fileoff					= payloadOffset + sizeof (MachOCore::AllImageInfosHeader);
 
@@ -184,7 +184,7 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 		memcpy (&imageEntry.uuid, &moduleInfo.uuid, sizeof imageEntry.uuid);
 		imageEntry.load_address		= moduleInfo.loadAddress;
 		imageEntry.seg_addrs_offset = currSegAddrsOffset;
-		imageEntry.segment_count	= moduleInfo.segments.size ();
+		imageEntry.segment_count	= (uint32_t)moduleInfo.segments.size ();
 		imageEntry.reserved			= moduleInfo.executing ? 1 : 0;
 
 		memcpy (&result[currImageEntryMemOffset], &imageEntry, sizeof imageEntry);

@@ -1,5 +1,6 @@
 #include "MachOCoreDumpBuilder.hpp"
 
+#include <cassert>
 #include <cmath>
 #include <iostream>
 

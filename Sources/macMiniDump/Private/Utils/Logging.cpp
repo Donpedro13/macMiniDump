@@ -1,5 +1,6 @@
 #include "LoggingPrivate.hpp"
 
+#include <cassert>
 #include <iostream>
 
 namespace MMD {

@@ -1,5 +1,7 @@
 #include "MachOCoreInternal.hpp"
 
+#include <cassert>
+
 namespace MMD {
 namespace MachOCore {
 
