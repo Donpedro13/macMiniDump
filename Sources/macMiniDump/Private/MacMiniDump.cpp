@@ -304,18 +304,19 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		const thread_state_flavor_t excFlavor = ARM_EXCEPTION_STATE64;
 #endif
 
-		// FIXME pthread_from_mach_thread_np does not work?!
-
 		// If the thread is the crashing one, start stackwalking etc. from the provided crash context
-		const pthread_t pthread = pthread_from_mach_thread_np (threads[i]);
-		uint64_t		tid		= 0;
-		if (pthread_threadid_np (pthread, &tid) != 0)
+		thread_identifier_info_data_t identifier_info;
+		mach_msg_type_number_t identifier_info_count = THREAD_IDENTIFIER_INFO_COUNT;
+		uint64_t tid = 0;
+		
+		if (thread_info(threads[i], THREAD_IDENTIFIER_INFO, (thread_info_t)&identifier_info, &identifier_info_count) == KERN_SUCCESS) {
+			tid = identifier_info.thread_id;
+		} else {
 			syslog (LOG_NOTICE, "Unable to get tid for thread #%d!", i);
-
-		// FIXME assume that if the target process has crashed, it's the main thread
-		// This is obviously a HACK for the time being...
-		if (pCrashContext != nullptr && /*tid == pCrashContext->crashedTID*/ i == 0) {
-			syslog (LOG_NOTICE, "Found main thread (tid %" PRIu64 " )", tid);
+		}
+		
+		if (pCrashContext != nullptr && tid == pCrashContext->crashedTID) {
+			syslog (LOG_NOTICE, "Found crashing thread (tid %" PRIu64 " )", tid);
 
 			memcpy (&ts, &pCrashContext->mcontext.__ss, sizeof ts);
 			memcpy (&es, &pCrashContext->mcontext.__es, sizeof es);
