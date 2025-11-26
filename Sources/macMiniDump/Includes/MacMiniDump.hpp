@@ -16,7 +16,6 @@
 #endif
 
 namespace MMD {
-
 struct CrashContext {
 	__darwin_mcontext64 mcontext;
 
