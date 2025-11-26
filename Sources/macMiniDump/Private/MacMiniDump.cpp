@@ -330,9 +330,10 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 				continue;
 		}
 
-		// TODO what's up with this? When a core file of a process that has a debugger attached,
-		//   this seems to happen sometimes. Maybe we should just ignore this edge case...
-#ifdef __x86_64__
+		// FIXME nullptr calls are a real use-case, this should be removed, if possible
+		// FIXME if it is removed, a special-case should be added for stackwalking if the PC is 0 (or small enough?)
+		// Limitation: when the target process has a debugger attached, this seems to happen sometimes
+/*#ifdef __x86_64__
 		if (ts.__rip == 0) {
 #elif defined __arm64__
 		if (ts.__pc == 0) {
@@ -340,7 +341,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			syslog (LOG_WARNING, "Skipping thread #%d because pc was 0!", i);
 
 			continue;
-		}
+		}*/
 
 		MachOCore::GPR gpr;
 		gpr.kind	   = MachOCore::RegSetKind::GPR;
