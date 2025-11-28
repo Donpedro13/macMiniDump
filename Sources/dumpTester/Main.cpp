@@ -44,7 +44,7 @@ __attribute__ ((noinline)) void Spin ()
 	func ();
 }
 
-bool CreateCoreFileImpl (mach_port_t task, const std::string& corePath, MMD::CrashContext* pCrashContext = nullptr)
+bool CreateCoreFileImpl (mach_port_t task, const std::string& corePath, MMDCrashContext* pCrashContext = nullptr)
 {
 	const char* pCorePath = corePath.c_str ();
 	// Make sure the destination file exists and is empty
@@ -56,7 +56,7 @@ bool CreateCoreFileImpl (mach_port_t task, const std::string& corePath, MMD::Cra
 
 	MMD::FileOStream fos (pCorePath);
 
-	return MMD::MiniDumpWriteDump (task, &fos, pCrashContext);
+	return MiniDumpWriteDump (task, &fos, pCrashContext);
 }
 
 bool CreateCoreFile (const std::string& corePath)
@@ -67,7 +67,7 @@ bool CreateCoreFile (const std::string& corePath)
 void SignalHandler (int sig, siginfo_t* sigInfo, void* context)
 {
 	__darwin_ucontext* ucontext		= (__darwin_ucontext*) context;
-	MMD::CrashContext  crashContext = {};
+	MMDCrashContext  crashContext = {};
 	crashContext.mcontext			= *reinterpret_cast<__darwin_mcontext64*> (ucontext->uc_mcontext);
 	pthread_threadid_np (NULL, &crashContext.crashedTID);
 
@@ -158,7 +158,7 @@ bool OOPCrashImpl (const std::string& corePath, const std::string& scenario)
 	}
 
 	// CrashContext is passed to us via stdout as raw bytes
-	MMD::CrashContext crashContext;
+	MMDCrashContext crashContext;
 	ssize_t			  bytesRead = read (pipefd[0], &crashContext, sizeof (crashContext));
 	if (bytesRead != sizeof (crashContext)) {
 		return false;
@@ -183,7 +183,7 @@ bool OOPCrash (const std::string& corePath)
 void SignalHandlerForOOPWorker (int sig, siginfo_t* sigInfo, void* context)
 {
 	__darwin_ucontext* ucontext		= (__darwin_ucontext*) context;
-	MMD::CrashContext  crashContext = {};
+	MMDCrashContext  crashContext = {};
 	crashContext.mcontext			= *reinterpret_cast<__darwin_mcontext64*> (ucontext->uc_mcontext);
 	pthread_threadid_np (NULL, &crashContext.crashedTID);
 
@@ -227,6 +227,18 @@ bool OOPCrashOnBackgroundThreadWorker (const std::string& corePath)
 	return true; // Unreachable
 }
 
+extern "C" int CreateCoreFromCImpl (char* pPath);	// From CCompatTest.c
+
+bool CreateCoreFromC (const std::string& corePath)
+{
+	if (!SetupSignalHandler (SignalHandler))
+		return false;
+
+	CreateCoreFromCImpl (const_cast<char*> (corePath.c_str ()));
+
+	return true; // Unreachable
+}
+
 void SetupMiscThreads ()
 {
 	std::thread t1 ([] () {
@@ -250,7 +262,8 @@ std::map<std::string, std::function<bool (const std::string&)>> g_scenarios = {
 	{ "oopcrash", OOPCrash },
 	{ "oopcrashworker", OOPCrashWorker },
 	{ "oopcrashonbackgroundthread", OOPCrashOnBackgroundThread },
-	{ "oopcrashonbackgroundthreadworker", OOPCrashOnBackgroundThreadWorker }
+	{ "oopcrashonbackgroundthreadworker", OOPCrashOnBackgroundThreadWorker },
+	{ "createcorefromc", CreateCoreFromC }
 };
 
 void PrintUsage (const char* argv0)

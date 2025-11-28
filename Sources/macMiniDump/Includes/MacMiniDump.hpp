@@ -6,28 +6,38 @@
 #include <mach/port.h>
 #include <sys/types.h>
 
-#include <csignal>
-#include <cstdio>
+#include <signal.h>
+#include <stdio.h>
 
-#include "IRandomAccessBinaryOStream.hpp"
+#ifdef __cplusplus
+	#include "IRandomAccessBinaryOStream.hpp"
+#endif // __cplusplus
 
 #if !defined __x86_64__ && !defined __arm64__
 	#error Unsupported CPU architecture!
 #endif
 
-namespace MMD {
-struct CrashContext {
-	__darwin_mcontext64 mcontext;
+struct MMDCrashContext {
+	struct __darwin_mcontext64 mcontext;
 
 	uint64_t crashedTID;
 };
 
-bool MiniDumpWriteDump (mach_port_t taskPort, FILE* pFile, CrashContext* pCrashContext = nullptr);
-bool MiniDumpWriteDump (mach_port_t taskPort, int fd, CrashContext* pCrashContext = nullptr);
+#ifdef __cplusplus
+namespace MMD {
+
+using CrashContext = MMDCrashContext;
+
 bool MiniDumpWriteDump (mach_port_t					taskPort,
 						IRandomAccessBinaryOStream* pOStream,
-						CrashContext*				pCrashContext = nullptr);
+						MMDCrashContext*			pCrashContext = nullptr);
 
 } // namespace MMD
+#endif // __cplusplus
+
+#ifdef __cplusplus
+extern "C"
+#endif // __cplusplus
+	int MiniDumpWriteDump (mach_port_t taskPort, int fd, struct MMDCrashContext* pCrashContext);
 
 #endif // MMD_MACMINIDUMP

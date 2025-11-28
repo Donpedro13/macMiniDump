@@ -265,7 +265,7 @@ bool AddPayloadsAndWrite (mach_port_t				  taskPort,
 bool AddThreadsToCore (mach_port_t			 taskPort,
 					   MachOCoreDumpBuilder* pCoreBuilder,
 					   ModuleList*			 pModules,
-					   CrashContext*		 pCrashContext /*= nullptr*/)
+					   MMDCrashContext*		 pCrashContext /*= nullptr*/)
 {
 	thread_act_port_array_t threads;
 	mach_msg_type_number_t	nThreads;
@@ -415,16 +415,7 @@ bool AddNotesToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
 
 } // namespace
 
-bool MiniDumpWriteDump (mach_port_t taskPort, FILE* pFile, CrashContext* pCrashContext /*= nullptr*/)
-{
-	assert (pFile != nullptr);
-
-	MMD::FileOStream fos (pFile);
-
-	return MiniDumpWriteDump (taskPort, &fos, pCrashContext);
-}
-
-bool MiniDumpWriteDump (mach_port_t taskPort, int fd, CrashContext* pCrashContext /*= nullptr*/)
+extern "C" int MiniDumpWriteDump (mach_port_t taskPort, int fd, struct MMDCrashContext* pCrashContext)
 {
 	MMD::FileOStream fos (fd);
 
