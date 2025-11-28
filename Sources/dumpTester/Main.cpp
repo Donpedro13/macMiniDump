@@ -64,7 +64,7 @@ bool CreateCoreFile (const std::string& corePath)
 	return CreateCoreFileImpl (mach_task_self (), corePath);
 }
 
-void SignalHandler (int sig, siginfo_t* sigInfo, void* context)
+void SignalHandler (int /*sig*/, siginfo_t* /*sigInfo*/, void* context)
 {
 	__darwin_ucontext* ucontext		= (__darwin_ucontext*) context;
 	MMDCrashContext  crashContext = {};
@@ -104,7 +104,7 @@ bool CrashOnBackgroundThread (const std::string& corePath)
 		return false;
 
 	std::thread t (
-		[] (const std::string& corePath) {
+		[] (const std::string&) {
 			CrashNullPtrCall ();
 		},
 		corePath);
@@ -180,7 +180,7 @@ bool OOPCrash (const std::string& corePath)
 	return OOPCrashImpl (corePath, "oopcrashworker");
 }
 
-void SignalHandlerForOOPWorker (int sig, siginfo_t* sigInfo, void* context)
+void SignalHandlerForOOPWorker (int /*sig*/, siginfo_t* /*sigInfo*/, void* context)
 {
 	__darwin_ucontext* ucontext		= (__darwin_ucontext*) context;
 	MMDCrashContext  crashContext = {};
@@ -196,7 +196,7 @@ void SignalHandlerForOOPWorker (int sig, siginfo_t* sigInfo, void* context)
 							   // a core file
 }
 
-bool OOPCrashWorker (const std::string& corePath)
+bool OOPCrashWorker (const std::string&)
 {
 	if (!SetupSignalHandler (SignalHandlerForOOPWorker))
 		return false;
@@ -217,7 +217,7 @@ bool OOPCrashOnBackgroundThreadWorker (const std::string& corePath)
 		return false;
 
 	std::thread t (
-		[] (const std::string& corePath) {
+		[] (const std::string&) {
 			CrashNullPtrCall ();
 		},
 		corePath);

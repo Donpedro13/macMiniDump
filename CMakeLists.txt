@@ -20,14 +20,13 @@ SET(CMAKE_CONFIGURATION_TYPES "${CMAKE_CONFIGURATION_TYPES}" CACHE STRING
     "Configurations"
     FORCE)
 
-# Overwrite "default" C++ compiler flags, set new ones
-# (No need to do the same for linker flags, as on Windows
-#  they contain the architecture only TODO?)
 STRING(CONCAT CXX_FLAGS_IMPL
 			  "-Wall "				# Turn on all warnings
+			  "-Wextra "			# Even more warnings
+			  "-Wpedantic "			# Enable pedantic warnings
 			  "-Werror "			# Treat warnings as errors
 			  "-g "				    # Complete debug info
-			  "-std=c++17 "		    # Resort to C++17 (for now) TODO how about C?
+			  "-std=c++17 "		    # Resort to C++17 (for now)
 			  )
 SET(CMAKE_CXX_FLAGS	${CXX_FLAGS_IMPL})
 

@@ -95,6 +95,7 @@ ModuleList::ModuleInfo::ModuleInfo (uintptr_t				 loadAddress,
 	uuid (),
 	filePath (filePath),
 	segments (segments),
+	executing (executing),
 	headerAndLoadCommandBytes (headerAndLoadCommandBytes.release ())
 {
 	memcpy (&uuid, pUUID, sizeof uuid);

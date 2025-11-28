@@ -84,7 +84,7 @@ void AddSurroundingMemoryToCore (mach_port_t		   taskPort,
 	AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, startAddress, length);
 }
 
-std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t payloadOffset, const ModuleList& modules)
+std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleList& modules)
 {
 	// The structure of this payload is the following:
 	/*
@@ -215,8 +215,7 @@ std::vector<char> CreateAllImageInfosPayload (mach_port_t taskPort, uint64_t pay
 	return result;
 }
 
-bool AddPayloadsAndWrite (mach_port_t				  taskPort,
-						  MachOCoreDumpBuilder*		  pCoreBuilder,
+bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		  pCoreBuilder,
 						  const ModuleList&			  modules,
 						  IRandomAccessBinaryOStream* pOStream)
 {
@@ -244,7 +243,7 @@ bool AddPayloadsAndWrite (mach_port_t				  taskPort,
 
 	uint64_t imageInfosPayloadOffset = 0;
 	pCoreBuilder->GetOffsetForNoteCommandPayload (MachOCore::AllImageInfosOwner, &imageInfosPayloadOffset);
-	std::vector<char> imageInfosPayload = CreateAllImageInfosPayload (taskPort, imageInfosPayloadOffset, modules);
+	std::vector<char> imageInfosPayload = CreateAllImageInfosPayload (imageInfosPayloadOffset, modules);
 	if (imageInfosPayload.empty ())
 		return false;
 
@@ -280,7 +279,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 	// If the task is not suspended, there is a race condition: threads might start and end in the meantime
 	// We have to handle this situation (by gracefully handling errors)
-	for (int i = 0; i < nThreads; ++i) {
+	for (unsigned int i = 0; i < nThreads; ++i) {
 		const bool threadSuspended = threads[i] != thisThread;
 
 		defer {
@@ -312,7 +311,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		if (thread_info(threads[i], THREAD_IDENTIFIER_INFO, (thread_info_t)&identifier_info, &identifier_info_count) == KERN_SUCCESS) {
 			tid = identifier_info.thread_id;
 		} else {
-			syslog (LOG_NOTICE, "Unable to get tid for thread #%d!", i);
+			syslog (LOG_NOTICE, "Unable to get tid for thread #%u!", i);
 		}
 		
 		if (pCrashContext != nullptr && tid == pCrashContext->crashedTID) {
@@ -404,7 +403,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 	return true;
 }
 
-bool AddNotesToCore (mach_port_t taskPort, MachOCoreDumpBuilder* pCoreBuilder)
+bool AddNotesToCore (MachOCoreDumpBuilder* pCoreBuilder)
 {
 	// Payloads for these will be added later
 	pCoreBuilder->AddNoteCommand (MachOCore::AddrableBitsOwner);
@@ -468,10 +467,10 @@ bool MiniDumpWriteDump (mach_port_t					taskPort,
 	if (!AddThreadsToCore (taskPort, &coreBuilder, &modules, pCrashContext))
 		return false;
 
-	if (!AddNotesToCore (taskPort, &coreBuilder))
+	if (!AddNotesToCore (&coreBuilder))
 		return false;
 
-	if (!AddPayloadsAndWrite (taskPort, &coreBuilder, modules, pOStream))
+	if (!AddPayloadsAndWrite (&coreBuilder, modules, pOStream))
 		return false;
 
 	return true;

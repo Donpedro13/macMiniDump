@@ -20,7 +20,7 @@ public:
 class PlainDataPtr : public IDataPtr {
 public:
 	PlainDataPtr (const void* pData): m_pData (reinterpret_cast<const char*> (pData)) {}
-	virtual const char* Get (size_t offset, size_t size) override { return m_pData + offset; }
+	virtual const char* Get (size_t offset, size_t /*size*/) override { return m_pData + offset; }
 	virtual const char* Get () override { return m_pData; }
 
 private:
@@ -31,7 +31,7 @@ private:
 class CopiedDataPtr : public IDataPtr {
 public:
 	CopiedDataPtr (const void* pData, size_t size);
-	virtual const char* Get (size_t offset, size_t size) override { return m_pData.get () + offset; }
+	virtual const char* Get (size_t offset, size_t /*size*/) override { return m_pData.get () + offset; }
 	virtual const char* Get () override { return m_pData.get (); }
 
 private:
