@@ -106,7 +106,7 @@ bool CrashOnMainThread (const std::string&)
 	if (!SetupSignalHandler (SignalHandler))
 		return false;
 
-	CrashNullPtrCall ();
+	CrashInvalidPtrWrite ();
 
 	return true; // Unreachable
 }
@@ -118,7 +118,7 @@ bool CrashOnBackgroundThread (const std::string& corePath)
 
 	std::thread t (
 		[] (const std::string&) {
-			CrashNullPtrCall ();
+			CrashInvalidPtrWrite ();
 		},
 		corePath);
 
@@ -214,7 +214,7 @@ bool OOPCrashWorker (const std::string&)
 	if (!SetupSignalHandler (SignalHandlerForOOPWorker))
 		return false;
 
-	CrashNullPtrCall ();
+	CrashInvalidPtrWrite ();
 
 	return true; // Unreachable
 }
@@ -231,7 +231,7 @@ bool OOPCrashOnBackgroundThreadWorker (const std::string& corePath)
 
 	std::thread t (
 		[] (const std::string&) {
-			CrashNullPtrCall ();
+			CrashInvalidPtrWrite ();
 		},
 		corePath);
 
