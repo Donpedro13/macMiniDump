@@ -395,9 +395,8 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		// changed since the state was captured (above). Should we capture it nonetheless, we would get a garbled call
 		// stack. This should be handled with explicitly copying the stack memory of the current thread, as close as
 		// possible to the context capture.
-		if (threads[i] != thisThread) {
+		if (threads[i] != thisThread || pCrashContext != nullptr)
 			AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, stackStart - lengthInBytes, lengthInBytes);
-		}
 	}
 
 	return true;
