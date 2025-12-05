@@ -64,6 +64,19 @@ bool CreateCoreFile (const std::string& corePath)
 	return CreateCoreFileImpl (mach_task_self (), corePath);
 }
 
+bool CreateCoreFileOnBackgroundThread (const std::string& corePath)
+{
+	std::thread t (
+		[] (const std::string& path) {
+			CreateCoreFileImpl (mach_task_self (), path);
+		},
+		corePath);
+
+	t.join ();
+
+	return true;
+}
+
 void SignalHandler (int /*sig*/, siginfo_t* /*sigInfo*/, void* context)
 {
 	__darwin_ucontext* ucontext		= (__darwin_ucontext*) context;
@@ -256,14 +269,14 @@ void SetupMiscThreads ()
 
 std::map<std::string, std::function<bool (const std::string&)>> g_scenarios = {
 	{ "mainthread", CreateCoreFile },
-	//{"backgroundthread", CreateCoreFile},
+	{ "backgroundthread", CreateCoreFileOnBackgroundThread},
+	{ "createcorefromc", CreateCoreFromC },
 	{ "crashonmainthread", CrashOnMainThread },
 	{ "crashonbackgroundthread", CrashOnBackgroundThread },
 	{ "oopcrash", OOPCrash },
 	{ "oopcrashworker", OOPCrashWorker },
 	{ "oopcrashonbackgroundthread", OOPCrashOnBackgroundThread },
-	{ "oopcrashonbackgroundthreadworker", OOPCrashOnBackgroundThreadWorker },
-	{ "createcorefromc", CreateCoreFromC }
+	{ "oopcrashonbackgroundthreadworker", OOPCrashOnBackgroundThreadWorker }
 };
 
 void PrintUsage (const char* argv0)
