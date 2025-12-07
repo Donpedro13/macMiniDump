@@ -69,33 +69,6 @@ def RunDumpTester(operation: str, dump_path: str) -> bool:
         
         if os.WEXITSTATUS(status) != 0:
             raise RuntimeError(f"dumpTester finished with non-zero exit code: {status}")
-        
-
-testcases = {}
-
-# Decorator for test cases
-def testcase(fixture, name: str, operation: str):
-    if fixture is None:
-        raise ValueError("fixture must be provided for a testcase")
-
-    def decorator(func):
-        # Store tests grouped by fixture instance
-        if fixture not in testcases:
-            testcases[fixture] = []
-
-        testcases[fixture].append({
-            'name': name,
-            'function': func,
-            'operation': operation,
-        })
-
-        func.testcase_name = name
-        func.testcase_operation = operation
-        func.testcase_fixture = fixture
-
-        return func
-
-    return decorator
 
 def CreateLLDBProcessForCoreFile(core_path: str) -> lldb.SBProcess:
     global dumpTester_path
@@ -220,24 +193,19 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
                             raise RuntimeError(f"Expected local variable '{var_name}' to have value '{expected_value}', but found '{var_value}'")
 
 corefile_test_fixture = CoreFileTestFixture()
-
-@testcase(fixture=corefile_test_fixture, name="CrashOnMainThread", operation="crashonmainthread")
-def CoreFileOnMainThread():
-    RunDumpTester(CoreFileOnMainThread.testcase_operation, CoreFileOnMainThread.testcase_fixture.core_path)
-
-    VerifyCoreFile(CoreFileOnMainThread.testcase_fixture.core_path, EXPECTATION_BASE | EXPECTATION_CRASH)
-
-@testcase(fixture=corefile_test_fixture, name="MainThread", operation="mainthread")
-def MainThread():
-    RunDumpTester(MainThread.testcase_operation, MainThread.testcase_fixture.core_path)
-
-    VerifyCoreFile(MainThread.testcase_fixture.core_path, EXPECTATION_BASE)
+testcases = {}
+def add_testcase(fixture, name, operation, expectation):
+    if fixture not in testcases:
+        testcases[fixture] = []
+    testcases[fixture].append({"name": name, "operation": operation, "expectation": expectation})
+        
+add_testcase(corefile_test_fixture, "CrashOnMainThread", "crashonmainthread", EXPECTATION_BASE | EXPECTATION_CRASH)
+add_testcase(corefile_test_fixture, "MainThread", "mainthread", EXPECTATION_BASE)
 
 def RunTests():
     for fixture, tests in testcases.items():
         for test in tests:
             test_name = test['name']
-            test_function = test['function']
             test_operation = test['operation']
 
             print(f"{fixture.Name()}::{test_name}")
@@ -245,7 +213,8 @@ def RunTests():
             fixture.Setup()
 
             try:
-                test_function()
+                RunDumpTester(test_operation, fixture.core_path)
+                VerifyCoreFile(fixture.core_path, test['expectation'])
             except Exception as e:
                 print(f"\t[FAILED] {e}")
                 
