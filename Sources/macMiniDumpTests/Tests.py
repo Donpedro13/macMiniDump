@@ -57,7 +57,7 @@ def RunDumpTester(operation: str, dump_path: str) -> bool:
     )
     _, status = os.waitpid(process.pid, 0)   # returns (pid, status) like wait(2)
 
-    if "crash" in operation:
+    if "crash" in operation and "oop" not in operation:
         if not os.WIFSIGNALED(status):
             raise RuntimeError(f"dumpTester did not finish with a signal: {status}")
         
@@ -199,8 +199,12 @@ def add_testcase(fixture, name, operation, expectation):
         testcases[fixture] = []
     testcases[fixture].append({"name": name, "operation": operation, "expectation": expectation})
         
-add_testcase(corefile_test_fixture, "CrashOnMainThread", "crashonmainthread", EXPECTATION_BASE | EXPECTATION_CRASH)
 add_testcase(corefile_test_fixture, "MainThread", "mainthread", EXPECTATION_BASE)
+add_testcase(corefile_test_fixture, "BackgroundThread", "backgroundthread", CoreFileTestExpectation(n_threads=4))
+add_testcase(corefile_test_fixture, "CrashOnMainThread", "crashonmainthread", EXPECTATION_CRASH)
+add_testcase(corefile_test_fixture, "CrashOnBackgroundThread", "crashonbackgroundthread", EXPECTATION_CRASH | CoreFileTestExpectation(n_threads=4, crashed_thread_index=3))
+add_testcase(corefile_test_fixture, "OOPCrashOnMainThread", "oopcrash", EXPECTATION_CRASH)
+add_testcase(corefile_test_fixture, "OOPCrashOnBackgroundThread", "oopcrashonbackgroundthread", EXPECTATION_CRASH | CoreFileTestExpectation(n_threads=4, crashed_thread_index=3))
 
 def RunTests():
     for fixture, tests in testcases.items():
