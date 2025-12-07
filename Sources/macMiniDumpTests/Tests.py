@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import sys
 import subprocess
 
@@ -126,8 +127,15 @@ class CoreFileTestFixture:
 @dataclass
 class CoreFileTestExpectation:
     n_threads : Optional[int] = None
+
+    stack_mindepth : Optional[int] = None
+
     crash : bool = False
+    exception_string : Optional[str] = None
+    exception_fault_address : Optional[int] = None
     crashed_thread_index : Optional[int] = None
+    crashed_func_name : Optional[str] = None
+    crashed_func_locals : Optional[dict] = None
     
     def __or__(self, other: 'CoreFileTestExpectation') -> 'CoreFileTestExpectation':
         """Compose two expectations using the | operator. Non-default fields from 'other' override 'self'."""
@@ -141,21 +149,22 @@ class CoreFileTestExpectation:
         return replace(self, **updates)
 
 EXPECTATION_BASE = CoreFileTestExpectation(n_threads=3)
-EXPECTATION_CRASH = EXPECTATION_BASE | CoreFileTestExpectation(crash=True, crashed_thread_index=0)
+EXPECTATION_CRASH = EXPECTATION_BASE | CoreFileTestExpectation(crash=True, crashed_thread_index=0, crashed_func_name="CrashInvalidPtrWrite", crashed_func_locals={"local": "20250425"}, exception_string="ESR_EC_DABORT_EL0", exception_fault_address=0xBEEF)
 
 def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
+    # Check if reason is stopped
     process = CreateLLDBProcessForCoreFile(core_path)
-    # Check if the process is stopped
     if process.GetState() != lldb.eStateStopped:
         raise RuntimeError("Process is not in stopped state after loading core file")
     
+    # Check thread count
     if expectation.n_threads is not None:
         n_threads = process.GetNumThreads()
         if n_threads != expectation.n_threads:
             raise RuntimeError(f"Expected {expectation.n_threads} threads, but found {n_threads}")
         
+    # Check for the crashed thread, check exception details
     if expectation.crash:       
-        # Enumerate all threads, and check if one has a stop reason of exception
         i_exception_thread = -1
         for i in range(process.GetNumThreads()):
             thread = process.GetThreadAtIndex(i)
@@ -169,6 +178,46 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
         if expectation.crashed_thread_index is not None:
             if expectation.crashed_thread_index != i_exception_thread:
                 raise RuntimeError(f"Expected crashed thread at index {expectation.crashed_thread_index}, but found at {i_exception_thread}")
+            
+        thread = process.GetThreadAtIndex(i_exception_thread)
+
+        if expectation.exception_string is not None:
+            stop_description = thread.GetStopDescription(1024)
+            match = re.search(r'(.*?) \(fault address: (0x[0-9A-Fa-f]+)\)', stop_description, re.DOTALL)
+            if not match:
+                raise RuntimeError("Failed to parse exception details from stop description")
+            exception_string = match.group(1)
+            fault_address = int(match.group(2), 16)
+            if exception_string != expectation.exception_string:
+                raise RuntimeError(f"Expected exception string '{expectation.exception_string}', but found '{exception_string}'")
+            if fault_address != expectation.exception_fault_address:
+                raise RuntimeError(f"Expected fault address '{hex(expectation.exception_fault_address)}', but found '{hex(fault_address)}'")
+
+    # Check stack depth and crashed function details
+    i_exception_thread = -1
+    for i in range(process.GetNumThreads()):
+        thread = process.GetThreadAtIndex(i)
+        stack_depth = thread.GetNumFrames()
+        if expectation.stack_mindepth is not None:
+            if stack_depth < expectation.stack_mindepth:
+                raise RuntimeError(f"Thread {i} has stack depth {stack_depth}, which is less than expected minimum {expectation.stack_mindepth}")
+        
+        if expectation.crashed_func_name is not None and expectation.crash:
+            if i == expectation.crashed_thread_index:
+                frame = thread.GetFrameAtIndex(0)
+                func_name = frame.GetFunctionName()
+                if expectation.crashed_func_name not in func_name:
+                    raise RuntimeError(f"Expected crashed function name '{expectation.crashed_func_name}' on thread {i}, but found '{func_name}'")
+                
+                if expectation.crashed_func_locals is not None:
+                    for var_name, expected_value in expectation.crashed_func_locals.items():
+                        var = frame.FindVariable(var_name)
+                        if not var.IsValid():
+                            raise RuntimeError(f"Expected local variable '{var_name}' not found in crashed function")
+                        
+                        var_value = var.GetValue()
+                        if var_value != str(expected_value):
+                            raise RuntimeError(f"Expected local variable '{var_name}' to have value '{expected_value}', but found '{var_value}'")
 
 corefile_test_fixture = CoreFileTestFixture()
 
@@ -183,7 +232,6 @@ def MainThread():
     RunDumpTester(MainThread.testcase_operation, MainThread.testcase_fixture.core_path)
 
     VerifyCoreFile(MainThread.testcase_fixture.core_path, EXPECTATION_BASE)
-
 
 def RunTests():
     for fixture, tests in testcases.items():

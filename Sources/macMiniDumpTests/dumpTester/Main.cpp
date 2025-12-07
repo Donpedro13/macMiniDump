@@ -33,12 +33,16 @@ __attribute__ ((noinline)) void Spin ()
 
 [[maybe_unused]] void CrashInvalidPtrWrite ()
 {
+	[[maybe_unused]] volatile int local = 20250425;
+
 	volatile int* p = (int*) 0xBEEF;
 	*p				= 42;
 }
 
 [[maybe_unused]] void CrashNullPtrCall ()
 {
+	[[maybe_unused]] volatile int local = 20250425;
+
 	typedef void (*FuncPtr) ();
 	FuncPtr func = nullptr;
 	func ();
