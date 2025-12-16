@@ -46,18 +46,18 @@ def Init():
 def Deinit():
     lldb.SBDebugger.Terminate()
 
-def RunDumpTester(operation: str, dump_path: str) -> bool:
+def RunDumpTester(operation: str, is_oop: bool, background_thread: bool, core_path: str):
     import signal
 
     global dumpTester_path
     process = subprocess.Popen(
-        [dumpTester_path, operation, dump_path],
+        [dumpTester_path, operation, "OOP" if is_oop else "IP", "BackgroundThread" if background_thread else "MainThread", core_path],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
     _, status = os.waitpid(process.pid, 0)   # returns (pid, status) like wait(2)
 
-    if "crash" in operation and "oop" not in operation:
+    if "Crash" in operation and not is_oop:
         if not os.WIFSIGNALED(status):
             raise RuntimeError(f"dumpTester did not finish with a signal: {status}")
         
@@ -194,17 +194,45 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
 
 corefile_test_fixture = CoreFileTestFixture()
 testcases = {}
-def add_testcase(fixture, name, operation, expectation):
+def add_testcase(fixture, name, operation, oop: bool, background_thread: bool, expectation):
     if fixture not in testcases:
         testcases[fixture] = []
-    testcases[fixture].append({"name": name, "operation": operation, "expectation": expectation})
-        
-add_testcase(corefile_test_fixture, "MainThread", "mainthread", EXPECTATION_BASE)
-add_testcase(corefile_test_fixture, "BackgroundThread", "backgroundthread", CoreFileTestExpectation(n_threads=4))
-add_testcase(corefile_test_fixture, "CrashOnMainThread", "crashonmainthread", EXPECTATION_CRASH)
-add_testcase(corefile_test_fixture, "CrashOnBackgroundThread", "crashonbackgroundthread", EXPECTATION_CRASH | CoreFileTestExpectation(n_threads=4, crashed_thread_index=3))
-add_testcase(corefile_test_fixture, "OOPCrashOnMainThread", "oopcrash", EXPECTATION_CRASH)
-add_testcase(corefile_test_fixture, "OOPCrashOnBackgroundThread", "oopcrashonbackgroundthread", EXPECTATION_CRASH | CoreFileTestExpectation(n_threads=4, crashed_thread_index=3))
+    testcases[fixture].append({"name": name, "operation": operation, "oop": oop, "background_thread": background_thread, "expectation": expectation})
+
+operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashNullPtrCall"]
+oop = [True, False]
+background_thread = [True, False]
+
+# Run all combinations
+for op in operations:
+    for is_oop in oop:
+        # Only crashes make sense to test OOP
+        if is_oop and "Crash" not in op:
+            continue
+
+        for is_background in background_thread:
+            test_name = op
+            expectation = EXPECTATION_BASE
+            if is_oop:
+                test_name += "_OOP"
+            if is_background:
+                test_name += "_BackgroundThread"
+                expectation |= CoreFileTestExpectation(n_threads=4)
+            
+            if "Crash" in op:
+                exception_string = "ESR_EC_"
+                if "Call" in op:
+                    exception_string += "IABORT"
+                else:
+                    exception_string += "DABORT"
+
+                exception_string += "_EL0"
+                fault_address = 0xBEEF if "Write" in op else 0x0
+                expectation |= CoreFileTestExpectation(crash=True, crashed_func_name=op, crashed_func_locals={"local": "20250425"}, exception_string=exception_string, exception_fault_address=fault_address)
+                if is_background:
+                    expectation = expectation | CoreFileTestExpectation(crashed_thread_index=3)
+
+            add_testcase(corefile_test_fixture, test_name, op, is_oop, is_background, expectation)
 
 def RunTests():
     for fixture, tests in testcases.items():
@@ -217,11 +245,12 @@ def RunTests():
             fixture.Setup()
 
             try:
-                RunDumpTester(test_operation, fixture.core_path)
+                RunDumpTester(test_operation, test['oop'], test['background_thread'], fixture.core_path)
                 VerifyCoreFile(fixture.core_path, test['expectation'])
             except Exception as e:
+                if isinstance(e, (SyntaxError, TypeError)):
+                    raise
                 print(f"\t[FAILED] {e}")
-                
                 continue
             finally:
                 fixture.Teardown()
