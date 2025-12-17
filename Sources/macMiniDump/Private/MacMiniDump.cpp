@@ -69,19 +69,19 @@ bool AddSegmentCommandFromProcessMemory (mach_port_t		   taskPort,
 }
 
 // This function adds the surrounding piece of memory of address, using the given range. That is, (2 * range) + 1 bytes
-// will be incuded, where address will be the "middle point"
-void AddSurroundingMemoryToCore (mach_port_t		   taskPort,
+// will be included, where address will be the "middle point"
+bool AddSurroundingMemoryToCore (mach_port_t		   taskPort,
 								 MachOCoreDumpBuilder* pCoreBuilder,
 								 uint64_t			   address,
 								 size_t				   range)
 {
-	assert (address != 0);
+	assert (address >= range && address <= UINT64_MAX - range); // Check for under- and overflow
 
 	const uint64_t middleAddress = address;
 	const uint64_t startAddress	 = middleAddress - range;
 	const size_t   length		 = (2 * range) + 1;
 
-	AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, startAddress, length);
+	return AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, startAddress, length);
 }
 
 std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleList& modules)
@@ -369,7 +369,14 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			// FIXME: if an address appears multiple times on a call stack (maybe even on multiple threads), we add
 			// duplicate memory
 			const size_t SurroundingsRange = 256;
-			AddSurroundingMemoryToCore (taskPort, pCoreBuilder, ip, SurroundingsRange);
+			// Make sure we do not under- or overflow (e.g. nullptr, or a very large address)
+			if (ip >= SurroundingsRange && ip <= UINT64_MAX - SurroundingsRange) {
+				if (!AddSurroundingMemoryToCore (taskPort, pCoreBuilder, ip, SurroundingsRange)) {
+					syslog (LOG_WARNING, "Failed to add surrounding memory for address %llu on thread #%d", ip, i);
+				}
+			} else {
+				syslog (LOG_WARNING, "Skipping address %llu on thread #%d because it is out of range!", ip, i);
+			}
 
 			// Mark modules as executing if an address corresponding to a module is on a call stack. According to lldb's
 			// code, this is used for some kind of symbol loading optimization. Without this, everything still functions

@@ -109,6 +109,7 @@ class CoreFileTestExpectation:
     crashed_thread_index : Optional[int] = None
     crashed_func_name : Optional[str] = None
     crashed_func_locals : Optional[dict] = None
+    crash_relevant_frame_index : int = 0
     
     def __or__(self, other: 'CoreFileTestExpectation') -> 'CoreFileTestExpectation':
         """Compose two expectations using the | operator. Non-default fields from 'other' override 'self'."""
@@ -177,7 +178,7 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
         
         if expectation.crashed_func_name is not None and expectation.crash:
             if i == expectation.crashed_thread_index:
-                frame = thread.GetFrameAtIndex(0)
+                frame = thread.GetFrameAtIndex(expectation.crash_relevant_frame_index)
                 func_name = frame.GetFunctionName()
                 if expectation.crashed_func_name not in func_name:
                     raise RuntimeError(f"Expected crashed function name '{expectation.crashed_func_name}' on thread {i}, but found '{func_name}'")
@@ -229,8 +230,12 @@ for op in operations:
                 exception_string += "_EL0"
                 fault_address = 0xBEEF if "Write" in op else 0x0
                 expectation |= CoreFileTestExpectation(crash=True, crashed_func_name=op, crashed_func_locals={"local": "20250425"}, exception_string=exception_string, exception_fault_address=fault_address)
+
                 if is_background:
                     expectation = expectation | CoreFileTestExpectation(crashed_thread_index=3)
+
+                if "PtrCall" in op:
+                    expectation = expectation | CoreFileTestExpectation(crash_relevant_frame_index=1)
 
             add_testcase(corefile_test_fixture, test_name, op, is_oop, is_background, expectation)
 
