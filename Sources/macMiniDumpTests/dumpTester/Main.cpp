@@ -195,9 +195,16 @@ bool LaunchOOPWorkerForOperation (const std::string& operation, bool onBackgroun
 	if (!CreateCoreFileImpl (task, corePath, &crashContext))
 		return false;
 
-	kill (pid, SIGKILL);
+	if (kill (pid, SIGKILL) != 0)
+		return false;
 	int status;
-	waitpid (pid, &status, 0);
+	pid_t waitResult;
+	do {
+    	waitResult = waitpid(pid, &status, 0);
+	} while (waitResult == -1 && errno == EINTR);
+
+	if (errno != 0 && waitResult == -1)
+		return false;
 
 	return WIFSIGNALED (status) && WTERMSIG (status) == SIGKILL;
 }
