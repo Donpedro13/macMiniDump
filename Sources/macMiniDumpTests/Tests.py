@@ -122,9 +122,6 @@ class CoreFileTestExpectation:
         
         return replace(self, **updates)
 
-EXPECTATION_BASE = CoreFileTestExpectation(n_threads=3)
-EXPECTATION_CRASH = EXPECTATION_BASE | CoreFileTestExpectation(crash=True, crashed_thread_index=0, crashed_func_name="CrashInvalidPtrWrite", crashed_func_locals={"local": "20250425"}, exception_string="ESR_EC_DABORT_EL0", exception_fault_address=0xBEEF)
-
 def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
     # Check if reason is stopped
     process = CreateLLDBProcessForCoreFile(core_path)
@@ -213,7 +210,7 @@ for op in operations:
 
         for is_background in background_thread:
             test_name = op
-            expectation = EXPECTATION_BASE
+            expectation = CoreFileTestExpectation(n_threads=3)
             if is_oop:
                 test_name += "_OOP"
             if is_background:
