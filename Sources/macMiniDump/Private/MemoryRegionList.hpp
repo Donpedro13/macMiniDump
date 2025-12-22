@@ -22,8 +22,8 @@ enum MemoryProtectionTypes : MemoryProtection {
 enum class MemoryRegionType { Unknown, Stack, Heap };
 
 struct MemoryRegionInfo {
-	uint64_t vmaddr;
-	uint64_t vmsize;
+	uintptr_t vmaddr;
+	uintptr_t vmsize;
 
 	MemoryProtection prot;
 

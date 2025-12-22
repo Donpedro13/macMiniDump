@@ -107,7 +107,7 @@ Pointer::Pointer (size_t widthInBytes, void* ptrIn): ptr (new uint8_t[widthInByt
 	memcpy (ptr.get (), ptrIn, sizeof (uint8_t) * widthInBytes);
 }
 
-Pointer::Pointer (uint64_t ptrIn): ptr (new uint8_t[8]), WidthInBytes (8)
+Pointer::Pointer (uintptr_t ptrIn): ptr (new uint8_t[8]), WidthInBytes (8)
 {
 	memcpy (ptr.get (), &ptrIn, sizeof (uint8_t) * 8);
 }
@@ -130,9 +130,9 @@ void* Pointer::AsGenericPointer ()
 	return As<void*> ();
 }
 
-uint64_t Pointer::AsUInt64 ()
+uintptr_t Pointer::AsUIntPtr ()
 {
-	return As<uint64_t> ();
+	return As<uintptr_t> ();
 }
 
 } // namespace MachOCore

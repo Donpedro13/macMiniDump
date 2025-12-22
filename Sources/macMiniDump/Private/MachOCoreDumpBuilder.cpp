@@ -176,7 +176,7 @@ bool MachOCoreDumpBuilder::AddNoteCommand (const char* pOwner, std::unique_ptr<I
 	return true;
 }
 
-bool MachOCoreDumpBuilder::AddSegmentCommand (uint64_t						 vmaddr,
+bool MachOCoreDumpBuilder::AddSegmentCommand (uintptr_t						 vmaddr,
 											  uint32_t						 prot,
 											  std::unique_ptr<IDataProvider> dataProvider)
 {
@@ -219,7 +219,7 @@ bool MachOCoreDumpBuilder::AddDataProviderForNoteCommand (const char*					 pOwne
 	return false;
 }
 
-bool MachOCoreDumpBuilder::AddDataProviderForSegmentCommand (uint64_t						vmaddr,
+bool MachOCoreDumpBuilder::AddDataProviderForSegmentCommand (uintptr_t						vmaddr,
 															 std::unique_ptr<IDataProvider> pDataProvider)
 {
 	for (auto& scPair : m_segment_cmds) {
@@ -261,7 +261,7 @@ bool MachOCoreDumpBuilder::GetOffsetForNoteCommandPayload (const char* pOwnerNam
 	return false;
 }
 
-bool MachOCoreDumpBuilder::GetOffsetForSegmentCommandPayload (uint64_t vmaddr, uint64_t* pOffsetOut) const
+bool MachOCoreDumpBuilder::GetOffsetForSegmentCommandPayload (uintptr_t vmaddr, uint64_t* pOffsetOut) const
 {
 	if (!m_loadCommandsFinalized)
 		return false;

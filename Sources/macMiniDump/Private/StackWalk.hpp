@@ -7,9 +7,11 @@
 
 #include <vector>
 
+#include "MachOCoreInternal.hpp"
+
 namespace MMD {
 
-std::vector<uint64_t> WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer);
+std::vector<uint64_t> WalkStack (mach_port_t taskPort, const MachOCore::GPR& gpr, const MachOCore::EXC& exc);
 
 } // namespace MMD
 

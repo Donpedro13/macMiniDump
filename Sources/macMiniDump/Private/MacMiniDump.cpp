@@ -357,7 +357,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		MachOCore::GPRPointers pointers (gpr);
 
 		std::vector<uint64_t> callStack =
-			WalkStack (taskPort, pointers.InstructionPointer ().AsUInt64 (), pointers.BasePointer ().AsUInt64 ());
+			WalkStack (taskPort, gpr, exc);
 
 		for (const auto ip : callStack) {
 			// Add some memory before and after every instruction pointer on the call stack. This is needed for
@@ -384,7 +384,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			pModules->MarkAsExecuting (ip);
 		}
 
-		uint64_t		 sp = pointers.StackPointer ().AsUInt64 ();
+		uintptr_t		 sp = pointers.StackPointer ().AsUIntPtr ();
 		MemoryRegionInfo regionInfo;
 		if (!memoryRegions.GetRegionInfoForAddress (sp, &regionInfo)) {
 			syslog (LOG_WARNING, "Stack pointer of thread #%d points to invalid memory: %llu", i, sp);
@@ -395,7 +395,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		if (regionInfo.type != MemoryRegionType::Stack)
 			syslog (LOG_WARNING, "Stack pointer of thread #%d points to non-stack memory: %llu", i, sp);
 
-		const uint64_t stackStart	 = regionInfo.vmaddr + regionInfo.vmsize;
+		const uintptr_t stackStart	 = regionInfo.vmaddr + regionInfo.vmsize;
 		size_t		   lengthInBytes = stackStart - sp;
 
 		// FIXME: in case of a "self dump", the main thread's stack memory is not included, because it might have

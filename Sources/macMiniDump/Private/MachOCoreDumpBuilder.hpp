@@ -27,13 +27,13 @@ public:
 	bool AddNoteCommand (const char* pOwnerName, std::unique_ptr<IDataProvider> dataProvider = nullptr);
 	template<typename... ThreadStates>
 	bool AddThreadCommand (ThreadStates... threadStates);
-	bool AddSegmentCommand (uint64_t vmaddr, uint32_t prot, std::unique_ptr<IDataProvider> dataProvider = nullptr);
+	bool AddSegmentCommand (uintptr_t vmaddr, uint32_t prot, std::unique_ptr<IDataProvider> dataProvider = nullptr);
 
 	bool AddDataProviderForNoteCommand (const char* pOwnerName, std::unique_ptr<IDataProvider> pDataProvider);
-	bool AddDataProviderForSegmentCommand (uint64_t vmaddr, std::unique_ptr<IDataProvider> pDataProvider);
+	bool AddDataProviderForSegmentCommand (uintptr_t vmaddr, std::unique_ptr<IDataProvider> pDataProvider);
 
 	bool GetOffsetForNoteCommandPayload (const char* pOwnerName, uint64_t* pOffsetOut) const;
-	bool GetOffsetForSegmentCommandPayload (uint64_t vmaddr, uint64_t* pOffsetOut) const;
+	bool GetOffsetForSegmentCommandPayload (uintptr_t vmaddr, uint64_t* pOffsetOut) const;
 
 	size_t				GetNumberOfSegmentCommands () const;
 	segment_command_64* GetSegmentCommand (size_t index);

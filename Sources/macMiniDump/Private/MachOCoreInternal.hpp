@@ -105,10 +105,10 @@ private:
 
 public:
 	explicit Pointer (size_t widthInBytes, void* ptr);
-	explicit Pointer (uint64_t ptr);
+	explicit Pointer (uintptr_t ptr);
 
 	void*	 AsGenericPointer ();
-	uint64_t AsUInt64 ();
+	uintptr_t AsUIntPtr ();
 
 	template<typename T>
 	T As ();

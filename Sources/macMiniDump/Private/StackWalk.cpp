@@ -12,7 +12,7 @@ namespace {
 #if __arm64__
 void StripPACFromPointer (uint64_t* ptr)
 {
-	asm("xpaci %0" : "+r"(*ptr)); // Clear pointer authentication bits
+	asm ("xpaci %0" : "+r"(*ptr)); // Clear pointer authentication bits
 }
 #endif
 
@@ -32,10 +32,14 @@ uint64_t DerefPtr (mach_port_t taskPort, const uint64_t ptr)
 
 } // namespace
 
-std::vector<uint64_t> WalkStack (mach_port_t taskPort, uint64_t instructionPointer, uint64_t basePointer)
+std::vector<uint64_t> WalkStack (mach_port_t taskPort, const MachOCore::GPR& gpr, [[maybe_unused]] const MachOCore::EXC& exc)
 {
 	// "Classic" base pointer chasing algorithm
 	std::vector<uint64_t> result;
+
+	MachOCore::GPRPointers pointers (gpr);
+	const uintptr_t basePointer		 = pointers.BasePointer ().AsUIntPtr ();
+	const uintptr_t instructionPointer = pointers.InstructionPointer ().AsUIntPtr ();
 
 	auto addIPToResult = [&result] (uint64_t ip) {
 #ifdef __arm64__
