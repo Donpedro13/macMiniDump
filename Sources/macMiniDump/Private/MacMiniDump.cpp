@@ -184,7 +184,7 @@ std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const Modu
 		memcpy (&imageEntry.uuid, &moduleInfo.uuid, sizeof imageEntry.uuid);
 		imageEntry.load_address		= moduleInfo.loadAddress;
 		imageEntry.seg_addrs_offset = currSegAddrsOffset;
-		imageEntry.segment_count	= (uint32_t)moduleInfo.segments.size ();
+		imageEntry.segment_count	= (uint32_t) moduleInfo.segments.size ();
 		imageEntry.reserved			= moduleInfo.executing ? 1 : 0;
 
 		memcpy (&result[currImageEntryMemOffset], &imageEntry, sizeof imageEntry);
@@ -305,15 +305,18 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 		// If the thread is the crashing one, start stackwalking etc. from the provided crash context
 		thread_identifier_info_data_t identifier_info;
-		mach_msg_type_number_t identifier_info_count = THREAD_IDENTIFIER_INFO_COUNT;
-		uint64_t tid = 0;
-		
-		if (thread_info(threads[i], THREAD_IDENTIFIER_INFO, (thread_info_t)&identifier_info, &identifier_info_count) == KERN_SUCCESS) {
+		mach_msg_type_number_t		  identifier_info_count = THREAD_IDENTIFIER_INFO_COUNT;
+		uint64_t					  tid					= 0;
+
+		if (thread_info (threads[i],
+						 THREAD_IDENTIFIER_INFO,
+						 (thread_info_t) &identifier_info,
+						 &identifier_info_count) == KERN_SUCCESS) {
 			tid = identifier_info.thread_id;
 		} else {
 			syslog (LOG_NOTICE, "Unable to get tid for thread #%u!", i);
 		}
-		
+
 		if (pCrashContext != nullptr && tid == pCrashContext->crashedTID) {
 			syslog (LOG_NOTICE, "Found crashing thread (tid %" PRIu64 " )", tid);
 
@@ -332,15 +335,15 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		// FIXME nullptr calls are a real use-case, this should be removed, if possible
 		// FIXME if it is removed, a special-case should be added for stackwalking if the PC is 0 (or small enough?)
 		// Limitation: when the target process has a debugger attached, this seems to happen sometimes
-/*#ifdef __x86_64__
-		if (ts.__rip == 0) {
-#elif defined __arm64__
-		if (ts.__pc == 0) {
-#endif
-			syslog (LOG_WARNING, "Skipping thread #%d because pc was 0!", i);
+		/*#ifdef __x86_64__
+				if (ts.__rip == 0) {
+		#elif defined __arm64__
+				if (ts.__pc == 0) {
+		#endif
+					syslog (LOG_WARNING, "Skipping thread #%d because pc was 0!", i);
 
-			continue;
-		}*/
+					continue;
+				}*/
 
 		MachOCore::GPR gpr;
 		gpr.kind	   = MachOCore::RegSetKind::GPR;
@@ -356,8 +359,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 		MachOCore::GPRPointers pointers (gpr);
 
-		std::vector<uint64_t> callStack =
-			WalkStack (taskPort, gpr, exc);
+		std::vector<uint64_t> callStack = WalkStack (taskPort, gpr, exc);
 
 		for (const auto ip : callStack) {
 			// Add some memory before and after every instruction pointer on the call stack. This is needed for
@@ -387,16 +389,19 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		uintptr_t		 sp = pointers.StackPointer ().AsUIntPtr ();
 		MemoryRegionInfo regionInfo;
 		if (!memoryRegions.GetRegionInfoForAddress (sp, &regionInfo)) {
-			syslog (LOG_WARNING, "Stack pointer of thread #%d points to invalid memory: %llu", i, sp);
+			syslog (LOG_WARNING, "Stack pointer of thread #%d points to invalid memory: %" PRIuPTR, i, (uintptr_t) sp);
 
 			continue;
 		}
 
 		if (regionInfo.type != MemoryRegionType::Stack)
-			syslog (LOG_WARNING, "Stack pointer of thread #%d points to non-stack memory: %llu", i, sp);
+			syslog (LOG_WARNING,
+					"Stack pointer of thread #%d points to non-stack memory: %" PRIuPTR,
+					i,
+					(uintptr_t) sp);
 
-		const uintptr_t stackStart	 = regionInfo.vmaddr + regionInfo.vmsize;
-		size_t		   lengthInBytes = stackStart - sp;
+		const uintptr_t stackStart	  = regionInfo.vmaddr + regionInfo.vmsize;
+		size_t			lengthInBytes = stackStart - sp;
 
 		// FIXME: in case of a "self dump", the main thread's stack memory is not included, because it might have
 		// changed since the state was captured (above). Should we capture it nonetheless, we would get a garbled call
