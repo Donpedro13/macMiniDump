@@ -28,23 +28,26 @@
 namespace MMD {
 namespace {
 
-uint64_t GetMemoryProtection (mach_port_t taskPort, uint64_t addr, uint64_t size)
+bool GetMemoryProtection (mach_port_t taskPort, uint64_t addr, uint64_t size, MemoryProtection* pProtOut)
 {
-	natural_t							  nesting_depth;
+	natural_t							  nesting_depth = 0;
 	vm_region_submap_short_info_data_64_t info;
-	mach_msg_type_number_t				  infoCnt;
+	mach_msg_type_number_t				  infoCnt = VM_REGION_SUBMAP_SHORT_INFO_COUNT_64;
 
 	uint64_t	   recurseAddr = addr;
 	mach_vm_size_t recurseSize = size;
 
-	::mach_vm_region_recurse (taskPort,
-							  &recurseAddr,
-							  &recurseSize,
-							  &nesting_depth,
-							  (vm_region_recurse_info_t) &info,
-							  &infoCnt);
-
-	return info.protection;
+	if (::mach_vm_region_recurse (taskPort,
+								  &recurseAddr,
+								  &recurseSize,
+								  &nesting_depth,
+								  (vm_region_recurse_info_t) &info,
+								  &infoCnt) != KERN_SUCCESS) {
+		return false;
+	} else {
+		*pProtOut = info.protection;
+		return true;
+	}
 }
 
 bool AddSegmentCommandFromProcessMemory (mach_port_t		   taskPort,
@@ -64,7 +67,10 @@ bool AddSegmentCommandFromProcessMemory (mach_port_t		   taskPort,
 										 uint64_t			   startAddress,
 										 size_t				   lengthInBytes)
 {
-	MemoryProtection prot = GetMemoryProtection (taskPort, startAddress, lengthInBytes);
+	MemoryProtection prot;
+	if (!GetMemoryProtection (taskPort, startAddress, lengthInBytes, &prot))
+		return false;
+
 	return AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, prot, startAddress, lengthInBytes);
 }
 

@@ -11,6 +11,7 @@
 
 namespace MMD {
 
+// Provided for convenience; set of values and numerical values must match those in vm_prot.h!
 using MemoryProtection = uint8_t;
 enum MemoryProtectionTypes : MemoryProtection {
 	MemProtNone	   = 0,

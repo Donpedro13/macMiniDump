@@ -25,14 +25,7 @@ MemoryRegionList::MemoryRegionList (mach_port_t taskPort)
 		regionInfo.vmsize			= size;
 		regionInfo.prot				= MemProtNone;
 
-		if (info.protection & VM_PROT_READ)
-			regionInfo.prot |= MemProtRead;
-
-		if (info.protection & VM_PROT_WRITE)
-			regionInfo.prot |= MemProtWrite;
-
-		if (info.protection & VM_PROT_EXECUTE)
-			regionInfo.prot |= MemProtExecute;
+		regionInfo.prot = info.protection;
 
 		switch (info.user_tag) {
 			case VM_MEMORY_STACK:
