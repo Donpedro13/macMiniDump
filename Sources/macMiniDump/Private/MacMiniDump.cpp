@@ -365,14 +365,17 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 		MachOCore::GPRPointers pointers (gpr);
 
-		std::vector<uint64_t> callStack = WalkStack (taskPort, gpr, exc);
+		std::vector<uint64_t> callStack = WalkStack (taskPort, memoryRegions, gpr, exc);
 
+		syslog (LOG_WARNING, "Thread #%d call stack", i);
 		for (const auto ip : callStack) {
 			// Add some memory before and after every instruction pointer on the call stack. This is needed for
 			// stack walking to work properly when opening the core, as lldb checks the protection of the memory
 			// these addresses point to during stack walking. If the memory is not included, it will assume these as
 			// non-executable, and simply abort the stackwalk. In addition, we also have the nice benefit of being
 			// able to see some disassembly, even if modules are missing. Modified code bytes are a use case, too.
+
+			syslog (LOG_WARNING, "\t0x%llx", ip);
 
 			// FIXME: if an address appears multiple times on a call stack (maybe even on multiple threads), we add
 			// duplicate memory
@@ -395,16 +398,13 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		uintptr_t		 sp = pointers.StackPointer ().AsUIntPtr ();
 		MemoryRegionInfo regionInfo;
 		if (!memoryRegions.GetRegionInfoForAddress (sp, &regionInfo)) {
-			syslog (LOG_WARNING, "Stack pointer of thread #%d points to invalid memory: %" PRIuPTR, i, (uintptr_t) sp);
+			syslog (LOG_WARNING, "Stack pointer of thread #%d points to invalid memory: %" PRIuPTR, i, sp);
 
 			continue;
 		}
 
 		if (regionInfo.type != MemoryRegionType::Stack)
-			syslog (LOG_WARNING,
-					"Stack pointer of thread #%d points to non-stack memory: %" PRIuPTR,
-					i,
-					(uintptr_t) sp);
+			syslog (LOG_WARNING, "Stack pointer of thread #%d points to non-stack memory: %" PRIuPTR, i, sp);
 
 		const uintptr_t stackStart	  = regionInfo.vmaddr + regionInfo.vmsize;
 		size_t			lengthInBytes = stackStart - sp;

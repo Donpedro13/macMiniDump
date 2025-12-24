@@ -56,44 +56,44 @@ GPRPointers::GPRPointers (const GPR& gpr): gpr (gpr) {}
 
 #ifdef __x86_64__
 
-Pointer GPRPointers::BasePointer ()
+Pointer GPRPointers::BasePointer () const
 {
 	return Pointer (gpr.gpr.__rbp);
 }
 
-Pointer GPRPointers::InstructionPointer ()
+Pointer GPRPointers::InstructionPointer () const
 {
 	return Pointer (gpr.gpr.__rip);
 }
 
-Pointer GPRPointers::StackPointer ()
+Pointer GPRPointers::StackPointer () const
 {
 	return Pointer (gpr.gpr.__rsp);
 }
 
-size_t GPRPointers::AddressWidthInBytes ()
+size_t GPRPointers::AddressWidthInBytes () const
 {
 	return 8;
 }
 
 #elif defined __arm64__
 
-Pointer GPRPointers::BasePointer ()
+Pointer GPRPointers::BasePointer () const
 {
 	return Pointer (gpr.gpr.__fp);
 }
 
-Pointer GPRPointers::InstructionPointer ()
+Pointer GPRPointers::InstructionPointer () const
 {
 	return Pointer (gpr.gpr.__pc);
 }
 
-Pointer GPRPointers::StackPointer ()
+Pointer GPRPointers::StackPointer () const
 {
 	return Pointer (gpr.gpr.__sp);
 }
 
-size_t GPRPointers::AddressWidthInBytes ()
+size_t GPRPointers::AddressWidthInBytes () const
 {
 	return 8;
 }

@@ -82,7 +82,7 @@ public:
 	x86_thread_state64_t	ts;
 	x86_exception_state64_t es;
 #elif defined __arm64__
-	arm_thread_state64_t ts;
+	arm_thread_state64_t	ts;
 	arm_exception_state64_t es;
 #endif
 	mach_msg_type_number_t gprCount;
@@ -107,7 +107,7 @@ public:
 	explicit Pointer (size_t widthInBytes, void* ptr);
 	explicit Pointer (uintptr_t ptr);
 
-	void*	 AsGenericPointer ();
+	void*	  AsGenericPointer ();
 	uintptr_t AsUIntPtr ();
 
 	template<typename T>
@@ -123,11 +123,11 @@ private:
 public:
 	explicit GPRPointers (const GPR& gpr);
 
-	Pointer BasePointer ();
-	Pointer InstructionPointer ();
-	Pointer StackPointer ();
+	Pointer BasePointer () const;
+	Pointer InstructionPointer () const;
+	Pointer StackPointer () const;
 
-	size_t AddressWidthInBytes ();
+	size_t AddressWidthInBytes () const;
 };
 
 extern const char* AddrableBitsOwner;

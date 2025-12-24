@@ -197,7 +197,7 @@ def add_testcase(fixture, name, operation, oop: bool, background_thread: bool, e
         testcases[fixture] = []
     testcases[fixture].append({"name": name, "operation": operation, "oop": oop, "background_thread": background_thread, "expectation": expectation})
 
-operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashNullPtrCall"]
+operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashNullPtrCall", "CrashInvalidPtrCall"]
 oop = [True, False]
 background_thread = [True, False]
 
@@ -225,11 +225,13 @@ for op in operations:
                     exception_string += "DABORT"
 
                 exception_string += "_EL0"
-                fault_address = 0xBEEF if "Write" in op else 0x0
+                fault_address = 0xFFFFFFFFFFFA7B00 if "InvalidPtr" in op else 0x0
                 expectation |= CoreFileTestExpectation(crash=True, crashed_func_name=op, crashed_func_locals={"local": "20250425"}, exception_string=exception_string, exception_fault_address=fault_address)
 
                 if is_background:
                     expectation = expectation | CoreFileTestExpectation(crashed_thread_index=3)
+                else:
+                    expectation = expectation | CoreFileTestExpectation(crashed_thread_index=0)
 
                 if "PtrCall" in op:
                     expectation = expectation | CoreFileTestExpectation(crash_relevant_frame_index=1)

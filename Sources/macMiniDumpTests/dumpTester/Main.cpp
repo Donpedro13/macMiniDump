@@ -15,6 +15,8 @@
 #include "FileOStream.hpp"
 #include "MacMiniDump.hpp"
 
+#define NOINLINE __attribute__ ((noinline))
+
 namespace {
 
 const std::string	 g_1 = "This is a string!";
@@ -25,28 +27,41 @@ std::string g_corePath;
 
 volatile int a = 0;
 
-__attribute__ ((noinline)) void Spin ()
+const uintptr_t InvalidPtr = 0xFFFFFFFFFFFA7B00;
+
+NOINLINE void Spin ()
 {
 	for (size_t i = 0; i < 500'000'000'0; ++i)
 		a *= 2;
 }
 
-bool CrashInvalidPtrWrite (const std::string& /*corePath*/)
+NOINLINE bool CrashInvalidPtrWrite (const std::string& /*corePath*/)
 {
 	[[maybe_unused]] volatile int local = 20250425;
 
-	volatile int* p = (int*) 0xBEEF;
+	volatile int* p = (int*) InvalidPtr;
 	*p				= 42;
 
 	return false; // Unreachable
 }
 
-bool CrashNullPtrCall (const std::string& /*corePath*/)
+NOINLINE bool CrashNullPtrCall (const std::string& /*corePath*/)
 {
 	[[maybe_unused]] volatile int local = 20250425;
 
 	typedef void (*FuncPtr) ();
-	FuncPtr func = nullptr;
+	volatile FuncPtr func = nullptr;
+	func ();
+
+	return false; // Unreachable
+}
+
+NOINLINE bool CrashInvalidPtrCall (const std::string& /*corePath*/)
+{
+	[[maybe_unused]] volatile int local = 20250425;
+
+	typedef void (*FuncPtr) ();
+	FuncPtr func = reinterpret_cast<FuncPtr> (InvalidPtr);
 	func ();
 
 	return false; // Unreachable
@@ -197,10 +212,10 @@ bool LaunchOOPWorkerForOperation (const std::string& operation, bool onBackgroun
 
 	if (kill (pid, SIGKILL) != 0)
 		return false;
-	int status;
+	int	  status;
 	pid_t waitResult;
 	do {
-    	waitResult = waitpid(pid, &status, 0);
+		waitResult = waitpid (pid, &status, 0);
 	} while (waitResult == -1 && errno == EINTR);
 
 	if (errno != 0 && waitResult == -1)
@@ -233,11 +248,13 @@ void SetupMiscThreads ()
 	t2.detach ();
 }
 
-std::map<std::string, std::function<bool (const std::string&)>> g_operations = { { "CreateCore", CreateCoreFile },
-																				 { "CreateCoreFromC", CreateCoreFromC },
-																				 { "CrashInvalidPtrWrite",
-																				   CrashInvalidPtrWrite },
-																				 { "CrashNullPtrCall", CrashNullPtrCall } };
+std::map<std::string, std::function<bool (const std::string&)>> g_operations = {
+	{ "CreateCore", CreateCoreFile },
+	{ "CreateCoreFromC", CreateCoreFromC },
+	{ "CrashInvalidPtrWrite", CrashInvalidPtrWrite },
+	{ "CrashNullPtrCall", CrashNullPtrCall },
+	{ "CrashInvalidPtrCall", CrashInvalidPtrCall }
+};
 
 void PrintUsage (const char* argv0)
 {
@@ -295,7 +312,7 @@ bool PerformOperationOOP (const std::string& operation, bool onBackgroundThread,
 		return opFn (corePath);
 	}
 
-	return !crash;	// Unreachable in case of a crash
+	return !crash; // Unreachable in case of a crash
 }
 
 } // namespace
