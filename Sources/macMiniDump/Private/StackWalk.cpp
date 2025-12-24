@@ -79,10 +79,11 @@ bool IsPreviousInstructionCallLike (mach_port_t taskPort, uintptr_t instructionP
 } // namespace
 
 std::vector<uint64_t> WalkStack (mach_port_t			 taskPort,
-								 const MemoryRegionList& memoryRegions,
+								 [[maybe_unused]] const MemoryRegionList& memoryRegions,
 								 const MachOCore::GPR&	 gpr,
-								 const MachOCore::EXC&	 exc)
+								 [[maybe_unused]] const MachOCore::EXC&	 exc)
 {
+
 	// "Classic" base pointer chasing algorithm
 	std::vector<uint64_t> result;
 
@@ -126,8 +127,11 @@ std::vector<uint64_t> WalkStack (mach_port_t			 taskPort,
 
 	size_t frameIndex = 0;
 	while (true) {
-		nextInstructionPointer = topStackFramePartial && frameIndex == 0 ?
+		nextInstructionPointer = 
+#ifdef __arm64__
+		topStackFramePartial && frameIndex == 0 ?
 									 gpr.gpr.__lr :
+#endif
 									 DerefPtr (taskPort, prevBasePointer + sizeof prevBasePointer);
 		nextBasePointer =
 			topStackFramePartial && frameIndex == 0 ? prevBasePointer : DerefPtr (taskPort, prevBasePointer);
