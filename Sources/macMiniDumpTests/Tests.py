@@ -103,6 +103,8 @@ class CoreFileTestExpectation:
 
     stack_mindepth : Optional[int] = None
 
+    required_images : Optional[list] = None
+
     crash : bool = False
     exception_string : Optional[str] = None
     exception_fault_address : Optional[int] = None
@@ -133,6 +135,14 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
         n_threads = process.GetNumThreads()
         if n_threads != expectation.n_threads:
             raise RuntimeError(f"Expected {expectation.n_threads} threads, but found {n_threads}")
+        
+    # Check if all required images are loaded
+    if expectation.required_images is not None:
+        target = process.GetTarget()
+        loaded_images = [target.GetModuleAtIndex(i).GetFileSpec().GetFilename() for i in range(target.GetNumModules())]
+        for required_image in expectation.required_images:
+            if required_image not in loaded_images:
+                raise RuntimeError(f"Required image '{required_image}' not found in loaded modules")
         
     # Check for the crashed thread, check exception details
     if expectation.crash:       
@@ -210,7 +220,7 @@ for op in operations:
 
         for is_background in background_thread:
             test_name = op
-            expectation = CoreFileTestExpectation(n_threads=3)
+            expectation = CoreFileTestExpectation(n_threads=3, required_images=["dumpTester", "dyld", "libsystem_platform.dylib", "libdyld.dylib"])
             if is_oop:
                 test_name += "_OOP"
             if is_background:

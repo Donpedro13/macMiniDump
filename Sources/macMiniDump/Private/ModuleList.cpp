@@ -1,27 +1,17 @@
 #include "ModuleList.hpp"
 
+#include <mach-o/dyld_images.h>
 #include <mach-o/loader.h>
 #include <mach/mach.h>
 
 #include <array>
+#include <cassert>
 #include <iostream>
 
 #include "ReadProcessMemory.hpp"
 
 namespace MMD {
 namespace {
-
-struct dyld_image_info {
-	uintptr_t imageLoadAddress;
-	uintptr_t imageFilePath;
-	uint64_t  imageFileModDate;
-};
-
-struct dyld_all_image_infos {
-	uint32_t  version;
-	uint32_t  infoArrayCount;
-	uintptr_t infoArray;
-};
 
 std::vector<ModuleList::SegmentInfo> GetSegmentsOfModule (const char* pModuleFirstByte)
 {
@@ -81,6 +71,55 @@ bool GetTextSegmentOfModule (const ModuleList::ModuleInfo& moduleInfo, ModuleLis
 	return false;
 }
 
+bool CreateModuleInfo (mach_port_t			   taskPort,
+					   uintptr_t			   loadAddress,
+					   const char*			   pImageFilePath,
+					   ModuleList::ModuleInfo* pModuleInfoOut)
+{
+	std::unique_ptr<char[]> pHeaderRawBytes = ReadProcessMemory (taskPort, loadAddress, sizeof (mach_header_64));
+	if (pHeaderRawBytes == nullptr)
+		return false;
+
+	mach_header_64*			pHeader = reinterpret_cast<mach_header_64*> (pHeaderRawBytes.get ());
+	std::unique_ptr<char[]> pRawBytes =
+		ReadProcessMemory (taskPort, loadAddress, sizeof (mach_header_64) + pHeader->sizeofcmds);
+	if (pRawBytes == nullptr)
+		return false;
+
+	std::vector<ModuleList::SegmentInfo> segments = GetSegmentsOfModule (pRawBytes.get ());
+	for (auto& si : segments) {
+		if (strcmp (si.segmentName, "__TEXT") == 0) {
+			si.address = loadAddress;
+
+			break;
+		}
+	}
+
+	std::array<char, 16> rawUUID = GetUUIDOfModule (pRawBytes.get ());
+	uuid_t				 uuid	 = {};
+	memcpy (&uuid, &rawUUID, sizeof uuid);
+	*pModuleInfoOut = ModuleList::ModuleInfo (loadAddress,
+											  &uuid,
+											  pImageFilePath,
+											  segments,
+											  false, // Assume it's not executing, for now
+											  std::move (pRawBytes));
+
+	return true;
+}
+
+bool CreateModuleInfo (mach_port_t			   taskPort,
+					   uintptr_t			   loadAddress,
+					   uintptr_t			   imageFilePathAddress,
+					   ModuleList::ModuleInfo* pModuleInfoOut)
+{
+	std::string imagePath;
+	if (!ReadProcessMemoryString (taskPort, (uintptr_t) imageFilePathAddress, 4096, &imagePath))
+		return false;
+
+	return CreateModuleInfo (taskPort, loadAddress, imagePath.c_str (), pModuleInfoOut);
+}
+
 } // namespace
 
 ModuleList::ModuleInfo::ModuleInfo () = default;
@@ -118,60 +157,44 @@ ModuleList::ModuleList (mach_port_t taskPort)
 
 	dyld_all_image_infos* pImageInfo = reinterpret_cast<dyld_all_image_infos*> (dyldInfoBytes.get ());
 
-	std::unique_ptr<char[]> dyldInfosBytes =
-		ReadProcessMemory (taskPort, pImageInfo->infoArray, pImageInfo->infoArrayCount * sizeof (dyld_image_info));
+	std::unique_ptr<char[]> dyldInfosBytes = ReadProcessMemory (taskPort,
+																(uintptr_t) pImageInfo->infoArray,
+																pImageInfo->infoArrayCount * sizeof (dyld_image_info));
 	if (dyldInfosBytes == nullptr)
 		return;
 
+	// Quirk: the dyld image itself is not listed in the image array, so we have to add it manually
+	std::string dyldImagePath = "/usr/lib/dyld";
+	// Try to read dyld path; if not available or fails, we go with a default value
+	if (pImageInfo->version >= 15)
+		ReadProcessMemoryString (taskPort, (uintptr_t) pImageInfo->dyldPath, 4096, &dyldImagePath);
+
+	assert (pImageInfo->version >= 9); // dyldImageLoadAddress was added in version 9, macOS 10.6, which is not supported by this library
+	ModuleInfo dyldModuleInfo;
+	if (!CreateModuleInfo (taskPort,
+						   (uintptr_t) pImageInfo->dyldImageLoadAddress,
+						   dyldImagePath.c_str (),
+						   &dyldModuleInfo)) {
+		Invalidate ();
+
+		return;
+	}
+
+	m_moduleInfos.emplace (dyldModuleInfo.loadAddress, std::move (dyldModuleInfo));
+
 	dyld_image_info* pImageInfoArray = reinterpret_cast<dyld_image_info*> (dyldInfosBytes.get ());
 	for (uint32_t i = 0; i < pImageInfo->infoArrayCount; ++i) {
-		std::string imagePath;
-		if (!ReadProcessMemoryString (taskPort, pImageInfoArray[i].imageFilePath, 4096, &imagePath)) {
+		ModuleInfo moduleInfo;
+		if (!CreateModuleInfo (taskPort,
+							   (uintptr_t) pImageInfoArray[i].imageLoadAddress,
+							   (uintptr_t) pImageInfoArray[i].imageFilePath,
+							   &moduleInfo)) {
 			Invalidate ();
 
 			return;
-		} else {
-			std::unique_ptr<char[]> pHeaderRawBytes =
-				ReadProcessMemory (taskPort, pImageInfoArray[i].imageLoadAddress, sizeof (mach_header_64));
-			if (pHeaderRawBytes == nullptr) {
-				Invalidate ();
-
-				return;
-			}
-
-			mach_header_64*			pHeader	  = reinterpret_cast<mach_header_64*> (pHeaderRawBytes.get ());
-			std::unique_ptr<char[]> pRawBytes = ReadProcessMemory (taskPort,
-																   pImageInfoArray[i].imageLoadAddress,
-																   sizeof (mach_header_64) + pHeader->sizeofcmds);
-			if (pRawBytes == nullptr) {
-				Invalidate ();
-
-				return;
-			}
-
-			uint64_t							 loadAddress = pImageInfoArray[i].imageLoadAddress;
-			std::vector<ModuleList::SegmentInfo> segments	 = GetSegmentsOfModule (pRawBytes.get ());
-			for (auto& si : segments) {
-				// HACK
-				if (strcmp (si.segmentName, "__TEXT") == 0) {
-					si.address = pImageInfoArray[i].imageLoadAddress;
-
-					break;
-				}
-			}
-
-			std::array<char, 16> rawUUID = GetUUIDOfModule (pRawBytes.get ());
-			uuid_t				 uuid	 = {};
-			memcpy (&uuid, &rawUUID, sizeof uuid);
-			std::pair<uint64_t, ModuleInfo> p (loadAddress,
-											   ModuleInfo (loadAddress,
-														   &uuid,
-														   imagePath,
-														   segments,
-														   false, // Assume it's not executing, for now
-														   std::move (pRawBytes)));
-			m_moduleInfos.emplace (std::move (p));
 		}
+
+		m_moduleInfos.emplace (moduleInfo.loadAddress, std::move (moduleInfo));
 	}
 }
 
