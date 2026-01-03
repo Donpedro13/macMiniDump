@@ -169,7 +169,8 @@ ModuleList::ModuleList (mach_port_t taskPort)
 	if (pImageInfo->version >= 15)
 		ReadProcessMemoryString (taskPort, (uintptr_t) pImageInfo->dyldPath, 4096, &dyldImagePath);
 
-	assert (pImageInfo->version >= 9); // dyldImageLoadAddress was added in version 9, macOS 10.6, which is not supported by this library
+	assert (pImageInfo->version >=
+			9); // dyldImageLoadAddress was added in version 9, macOS 10.6, which is not supported by this library
 	ModuleInfo dyldModuleInfo;
 	if (!CreateModuleInfo (taskPort,
 						   (uintptr_t) pImageInfo->dyldImageLoadAddress,
@@ -208,7 +209,35 @@ size_t ModuleList::GetSize () const
 	return m_moduleInfos.size ();
 }
 
-bool ModuleList::GetModuleInfoForAddress (uint64_t address, ModuleInfo** pInfoOut)
+bool ModuleList::GetModuleInfoForAddress (uint64_t address, const ModuleInfo** pInfoOut) const
+{
+	ModuleInfo* pModuleInfo = nullptr;
+	if (!const_cast<ModuleList*> (this)->GetModuleInfoForAddressImpl (address, &pModuleInfo))
+		return false;
+
+	*pInfoOut = pModuleInfo;
+
+	return true;
+}
+
+bool ModuleList::MarkAsExecuting (uint64_t codeAddress)
+{
+	ModuleInfo* pModuleInfo = nullptr;
+
+	if (!GetModuleInfoForAddressImpl (codeAddress, &pModuleInfo))
+		return false;
+
+	pModuleInfo->executing = true;
+
+	return true;
+}
+
+void ModuleList::Invalidate ()
+{
+	m_moduleInfos.clear ();
+}
+
+bool ModuleList::GetModuleInfoForAddressImpl (uint64_t address, ModuleInfo** pInfoOut)
 {
 	if (m_moduleInfos.empty ())
 		return false;
@@ -248,23 +277,6 @@ bool ModuleList::GetModuleInfoForAddress (uint64_t address, ModuleInfo** pInfoOu
 	} else {
 		return false;
 	}
-}
-
-bool ModuleList::MarkAsExecuting (uint64_t codeAddress)
-{
-	ModuleInfo* pModuleInfo = nullptr;
-
-	if (!GetModuleInfoForAddress (codeAddress, &pModuleInfo))
-		return false;
-
-	pModuleInfo->executing = true;
-
-	return true;
-}
-
-void ModuleList::Invalidate ()
-{
-	m_moduleInfos.clear ();
 }
 
 } // namespace MMD

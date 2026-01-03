@@ -123,6 +123,59 @@ class CoreFileTestExpectation:
                 updates[field.name] = other_value
         
         return replace(self, **updates)
+    
+def VerifySegmentsInCoreFile(core_path: str, callstacks: list[list]):
+    # We check if every address in the callstacks is within a segment in the core file. This basically tests if stackwalking
+    # works correctly in MMD or not
+    try:
+        output = subprocess.check_output(["otool", "-l", core_path], stderr=subprocess.STDOUT).decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to run otool: {e.output.decode('utf-8')}")
+
+    segments = []
+    is_segment = False
+    vmaddr = None
+    vmsize = None
+
+    for line in output.splitlines():
+        line = line.strip()
+        if line.startswith("cmd "):
+            cmd = line.split()[1]
+            if cmd == "LC_SEGMENT_64":
+                is_segment = True
+                vmaddr = None
+                vmsize = None
+            else:
+                is_segment = False
+        
+        if is_segment:
+            if line.startswith("vmaddr "):
+                vmaddr = int(line.split()[1], 16)
+            elif line.startswith("vmsize "):
+                vmsize = int(line.split()[1], 16)
+            
+            if vmaddr is not None and vmsize is not None:
+                segments.append((vmaddr, vmaddr + vmsize))
+                is_segment = False
+                vmaddr = None
+                vmsize = None
+
+    for i, stack in enumerate(callstacks):
+        for j, address in enumerate(stack):
+            if address == 0 or address == 0xfffffffffffa7b00:
+                continue
+            
+            if isinstance(address, str):
+                address = int(address, 16)
+            
+            found = False
+            for start, end in segments:
+                if start <= address < end:
+                    found = True
+                    break
+            
+            if not found:
+                raise RuntimeError(f"Address {hex(address)} (stack {i}, frame {j}) not found in any core file segment")
 
 def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
     # Check if reason is stopped
@@ -174,14 +227,44 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
             if fault_address != expectation.exception_fault_address:
                 raise RuntimeError(f"Expected fault address '{hex(expectation.exception_fault_address)}', but found '{hex(fault_address)}'")
 
-    # Check stack depth and crashed function details
+    # Check stack and crashed function details
     i_exception_thread = -1
+    callstacks = []
     for i in range(process.GetNumThreads()):
+        callstack = []
+        callstacks.append(callstack)
         thread = process.GetThreadAtIndex(i)
         stack_depth = thread.GetNumFrames()
         if expectation.stack_mindepth is not None:
             if stack_depth < expectation.stack_mindepth:
                 raise RuntimeError(f"Thread {i} has stack depth {stack_depth}, which is less than expected minimum {expectation.stack_mindepth}")
+        
+        # Inlined functions are tricky, because the stack walking code in MMD is not aware of them.
+        # Consider the following call stack:
+        # #0: DoWork                   PC1
+        # #1: Boilerplate2 (inlined)   PC2
+        # #2: Boilerplate1 (inlined)   PC3
+        # #3: PerformAction            PC4
+        # #4: Main                     PC5
+        #
+        # In this case, even though #1-#3 share the same physical stack frame, stack walking code in MMD will "attribute"
+        # the physical frame to #1. This will result in the following callstack: [PC1, PC2, PC5]
+        # LLDB has access and will use debug info, so its callstack will include inline functions, too.
+        # So we need to skip the check for:
+        # - All consecutive inlined functions after the first one
+        # - The first non-inlined function after a block of inlined functions
+        in_inline_block = False
+        for j in range(stack_depth):
+            frame = thread.GetFrameAtIndex(j)
+            if frame.IsInlined():
+                if not in_inline_block:
+                    callstack.append(frame.GetPCAddress().GetLoadAddress(process.GetTarget()))
+                    in_inline_block = True
+            else:
+                if in_inline_block:
+                    in_inline_block = False
+                else:
+                    callstack.append(frame.GetPCAddress().GetLoadAddress(process.GetTarget()))
         
         if expectation.crashed_func_name is not None and expectation.crash:
             if i == expectation.crashed_thread_index:
@@ -199,6 +282,8 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
                         var_value = var.GetValue()
                         if var_value != str(expected_value):
                             raise RuntimeError(f"Expected local variable '{var_name}' to have value '{expected_value}', but found '{var_value}'")
+                        
+    VerifySegmentsInCoreFile(core_path, callstacks)
 
 corefile_test_fixture = CoreFileTestFixture()
 testcases = {}

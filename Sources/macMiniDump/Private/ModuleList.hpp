@@ -51,7 +51,7 @@ public:
 	ModuleInfos::const_iterator begin () const { return m_moduleInfos.begin (); }
 	ModuleInfos::const_iterator end () const { return m_moduleInfos.end (); }
 
-	bool GetModuleInfoForAddress (uint64_t address, ModuleInfo** pModuleInfoOut);
+	bool GetModuleInfoForAddress (uint64_t address, const ModuleInfo** pModuleInfoOut) const;
 
 	bool MarkAsExecuting (uint64_t codeAddress);
 
@@ -59,6 +59,8 @@ private:
 	ModuleInfos m_moduleInfos;
 
 	void Invalidate ();
+
+	bool GetModuleInfoForAddressImpl (uint64_t address, ModuleInfo** pInfoOut);
 };
 
 } // namespace MMD

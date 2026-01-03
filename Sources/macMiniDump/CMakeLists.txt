@@ -24,6 +24,8 @@ SET(macMiniDump_sources
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/ProcessMemoryReaderDataPtr.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/StackWalk.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/StackWalk.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/StackFrame.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/StackFrame.hpp
 
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/Defer.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/LoggingPrivate.hpp

@@ -365,15 +365,16 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 		MachOCore::GPRPointers pointers (gpr);
 
-		std::vector<uint64_t> callStack = WalkStack (taskPort, memoryRegions, gpr, exc);
+		std::vector<uint64_t> callStack = WalkStack (taskPort, memoryRegions, *pModules, gpr, exc);
 
 		syslog (LOG_WARNING, "Thread #%d call stack", i);
 		for (const auto ip : callStack) {
 			// Add some memory before and after every instruction pointer on the call stack. This is needed for
-			// stack walking to work properly when opening the core, as lldb checks the protection of the memory
-			// these addresses point to during stack walking. If the memory is not included, it will assume these as
-			// non-executable, and simply abort the stackwalk. In addition, we also have the nice benefit of being
-			// able to see some disassembly, even if modules are missing. Modified code bytes are a use case, too.
+			// stack walking to work properly when opening the core, as LLDB checks the protection of the memory
+			// these addresses point to during stack walking. This is crucial for modules which are not available when
+			// opening the core file (frequent case: system libraries). If the memory is not included, it will assume
+			// these as non-executable, and simply abort the stackwalk. In addition, we also have the nice benefit of
+			// being able to see some disassembly, even if modules are missing. Modified code bytes are a use case, too.
 
 			syslog (LOG_WARNING, "\t0x%llx", ip);
 
