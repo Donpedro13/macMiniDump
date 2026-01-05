@@ -57,12 +57,12 @@ def RunDumpTester(operation: str, is_oop: bool, background_thread: bool, core_pa
     )
     _, status = os.waitpid(process.pid, 0)   # returns (pid, status) like wait(2)
 
-    if "Crash" in operation and not is_oop:
+    if ("Crash" in operation or "Abort" in operation) and not is_oop:
         if not os.WIFSIGNALED(status):
             raise RuntimeError(f"dumpTester did not finish with a signal: {status}")
         
         if os.WTERMSIG(status) != signal.SIGKILL:
-            raise RuntimeError(f"dumpTester finished with a signal, but it was not SIGKILL {status}")
+            raise RuntimeError(f"dumpTester finished with a signal, but it was not SIGKILL: {status}")
     else:
         if not os.WIFEXITED(status):
             raise RuntimeError(f"dumpTester did not finish with exit: {status}")
@@ -108,10 +108,11 @@ class CoreFileTestExpectation:
     crash : bool = False
     exception_string : Optional[str] = None
     exception_fault_address : Optional[int] = None
-    crashed_thread_index : Optional[int] = None
-    crashed_func_name : Optional[str] = None
-    crashed_func_locals : Optional[dict] = None
-    crash_relevant_frame_index : int = 0
+
+    relevant_thread_index : Optional[int] = None
+    relevant_func_name : Optional[str] = None
+    relevant_func_locals : Optional[dict] = None
+    relevant_frame_index : int = 0
     
     def __or__(self, other: 'CoreFileTestExpectation') -> 'CoreFileTestExpectation':
         """Compose two expectations using the | operator. Non-default fields from 'other' override 'self'."""
@@ -209,9 +210,9 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
         if i_exception_thread == -1:
             raise RuntimeError("No thread with stop reason exception found")
         
-        if expectation.crashed_thread_index is not None:
-            if expectation.crashed_thread_index != i_exception_thread:
-                raise RuntimeError(f"Expected crashed thread at index {expectation.crashed_thread_index}, but found at {i_exception_thread}")
+        if expectation.relevant_thread_index is not None:
+            if expectation.relevant_thread_index != i_exception_thread:
+                raise RuntimeError(f"Expected crashed thread at index {expectation.relevant_thread_index}, but found at {i_exception_thread}")
             
         thread = process.GetThreadAtIndex(i_exception_thread)
 
@@ -266,18 +267,18 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
                 else:
                     callstack.append(frame.GetPCAddress().GetLoadAddress(process.GetTarget()))
         
-        if expectation.crashed_func_name is not None and expectation.crash:
-            if i == expectation.crashed_thread_index:
-                frame = thread.GetFrameAtIndex(expectation.crash_relevant_frame_index)
+        if expectation.relevant_func_name is not None:
+            if i == expectation.relevant_thread_index:
+                frame = thread.GetFrameAtIndex(expectation.relevant_frame_index)
                 func_name = frame.GetFunctionName()
-                if expectation.crashed_func_name not in func_name:
-                    raise RuntimeError(f"Expected crashed function name '{expectation.crashed_func_name}' on thread {i}, but found '{func_name}'")
+                if expectation.relevant_func_name not in func_name:
+                    raise RuntimeError(f"Expected relevant function name '{expectation.relevant_func_name}' on thread {i}, but found '{func_name}'")
                 
-                if expectation.crashed_func_locals is not None:
-                    for var_name, expected_value in expectation.crashed_func_locals.items():
+                if expectation.relevant_func_locals is not None:
+                    for var_name, expected_value in expectation.relevant_func_locals.items():
                         var = frame.FindVariable(var_name)
                         if not var.IsValid():
-                            raise RuntimeError(f"Expected local variable '{var_name}' not found in crashed function")
+                            raise RuntimeError(f"Expected local variable '{var_name}' not found in relevant function")
                         
                         var_value = var.GetValue()
                         if var_value != str(expected_value):
@@ -292,15 +293,15 @@ def add_testcase(fixture, name, operation, oop: bool, background_thread: bool, e
         testcases[fixture] = []
     testcases[fixture].append({"name": name, "operation": operation, "oop": oop, "background_thread": background_thread, "expectation": expectation})
 
-operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashNullPtrCall", "CrashInvalidPtrCall"]
+operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashNullPtrCall", "CrashInvalidPtrCall", "AbortPureVirtualCall"]
 oop = [True, False]
 background_thread = [True, False]
 
 # Run all combinations
 for op in operations:
     for is_oop in oop:
-        # Only crashes make sense to test OOP
-        if is_oop and "Crash" not in op:
+        # Only crashes and aborts make sense to test OOP
+        if is_oop and ("Crash" not in op and "Abort" not in op):
             continue
 
         for is_background in background_thread:
@@ -311,6 +312,11 @@ for op in operations:
             if is_background:
                 test_name += "_BackgroundThread"
                 expectation |= CoreFileTestExpectation(n_threads=4)
+
+            if is_background:
+                expectation = expectation | CoreFileTestExpectation(relevant_thread_index=3)
+            else:
+                expectation = expectation | CoreFileTestExpectation(relevant_thread_index=0)
             
             if "Crash" in op:
                 exception_string = "ESR_EC_"
@@ -321,15 +327,12 @@ for op in operations:
 
                 exception_string += "_EL0"
                 fault_address = 0xFFFFFFFFFFFA7B00 if "InvalidPtr" in op else 0x0
-                expectation |= CoreFileTestExpectation(crash=True, crashed_func_name=op, crashed_func_locals={"local": "20250425"}, exception_string=exception_string, exception_fault_address=fault_address)
-
-                if is_background:
-                    expectation = expectation | CoreFileTestExpectation(crashed_thread_index=3)
-                else:
-                    expectation = expectation | CoreFileTestExpectation(crashed_thread_index=0)
+                expectation |= CoreFileTestExpectation(crash=True, relevant_func_name=op, relevant_func_locals={"local": "20250425"}, exception_string=exception_string, exception_fault_address=fault_address)
 
                 if "PtrCall" in op:
-                    expectation = expectation | CoreFileTestExpectation(crash_relevant_frame_index=1)
+                    expectation = expectation | CoreFileTestExpectation(relevant_frame_index=1)
+            elif "Abort" in op:
+                expectation = expectation | CoreFileTestExpectation(relevant_frame_index=2, relevant_func_name="abort")
 
             add_testcase(corefile_test_fixture, test_name, op, is_oop, is_background, expectation)
 

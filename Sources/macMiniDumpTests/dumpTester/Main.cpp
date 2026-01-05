@@ -67,6 +67,32 @@ NOINLINE bool CrashInvalidPtrCall (const std::string& /*corePath*/)
 	return false; // Unreachable
 }
 
+class Base;
+void CallOpViaBasePtr (Base* pObject);
+class Base {
+public:
+	Base () { CallOpViaBasePtr (this); }
+	
+	virtual void Operation () = 0;
+};
+
+class Derived : public Base {
+public:
+	virtual void Operation () {	 }
+};
+
+void CallOpViaBasePtr (Base* pObject)
+{
+	pObject->Operation ();
+}
+
+NOINLINE bool AbortPureVirtualCall (const std::string& /*corePath*/)
+{
+	Derived d;
+
+	return false; // Unreachable
+}
+
 bool CreateCoreFileImpl (mach_port_t task, const std::string& corePath, MMDCrashContext* pCrashContext = nullptr)
 {
 	const char* pCorePath = corePath.c_str ();
@@ -178,7 +204,7 @@ bool CreateOOPWorker (const std::string& operation,
 
 bool LaunchOOPWorkerForOperation (const std::string& operation, bool onBackgroundThread, const std::string& corePath)
 {
-	const bool crash = (operation.find ("Crash") != std::string::npos);
+	const bool crash = (operation.find ("Crash") != std::string::npos) || (operation.find ("Abort") != std::string::npos);
 	pid_t	   pid;
 	int		   stdOutFd;
 	if (!CreateOOPWorker (operation, onBackgroundThread, crash, corePath, &stdOutFd, &pid))
@@ -253,7 +279,8 @@ std::map<std::string, std::function<bool (const std::string&)>> g_operations = {
 	{ "CreateCoreFromC", CreateCoreFromC },
 	{ "CrashInvalidPtrWrite", CrashInvalidPtrWrite },
 	{ "CrashNullPtrCall", CrashNullPtrCall },
-	{ "CrashInvalidPtrCall", CrashInvalidPtrCall }
+	{ "CrashInvalidPtrCall", CrashInvalidPtrCall },
+	{ "AbortPureVirtualCall", AbortPureVirtualCall },
 };
 
 void PrintUsage (const char* argv0)
@@ -273,7 +300,7 @@ bool PerformScenario (const std::string& operation, bool oop, bool onBackgroundT
 	if (oop)
 		return LaunchOOPWorkerForOperation (operation, onBackgroundThread, corePath);
 
-	const bool crash = (operation.find ("Crash") != std::string::npos);
+	const bool crash = (operation.find ("Crash") != std::string::npos) || (operation.find ("Abort") != std::string::npos);
 	if (crash)
 		SetupSignalHandler (SignalHandler);
 
@@ -295,7 +322,7 @@ bool PerformScenario (const std::string& operation, bool oop, bool onBackgroundT
 
 bool PerformOperationOOP (const std::string& operation, bool onBackgroundThread, const std::string& corePath)
 {
-	const bool crash = (operation.find ("Crash") != std::string::npos);
+	const bool crash = (operation.find ("Crash") != std::string::npos) || (operation.find ("Abort") != std::string::npos);
 	if (crash)
 		SetupSignalHandler (SignalHandlerForOOPWorker);
 
