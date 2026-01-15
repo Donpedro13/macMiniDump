@@ -87,12 +87,22 @@ bool CreateModuleInfo (mach_port_t			   taskPort,
 		return false;
 
 	std::vector<ModuleList::SegmentInfo> segments = GetSegmentsOfModule (pRawBytes.get ());
-	for (auto& si : segments) {
+	ptrdiff_t							 slide	  = 0;
+	for (const auto& si : segments) {
 		if (strcmp (si.segmentName, "__TEXT") == 0) {
-			si.address = loadAddress;
+			slide = loadAddress - si.address; // We calculate the slide based on the actual load address and "preferred"
+											  // load address of the __TEXT segment
 
 			break;
 		}
+	}
+
+	// Apply the slide value to all segments (except for __PAGEZERO, which is "virtual", and should always begin at 0)
+	for (auto& si : segments) {
+		if (strcmp (si.segmentName, "__PAGEZERO") == 0)
+			continue;
+
+		si.address += slide;
 	}
 
 	std::array<char, 16> rawUUID = GetUUIDOfModule (pRawBytes.get ());

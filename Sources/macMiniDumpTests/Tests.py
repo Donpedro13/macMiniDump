@@ -225,7 +225,7 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
             fault_address = int(match.group(2), 16)
             if exception_string != expectation.exception_string:
                 raise RuntimeError(f"Expected exception string '{expectation.exception_string}', but found '{exception_string}'")
-            if fault_address != expectation.exception_fault_address:
+            if expectation.exception_fault_address and fault_address != expectation.exception_fault_address:
                 raise RuntimeError(f"Expected fault address '{hex(expectation.exception_fault_address)}', but found '{hex(fault_address)}'")
 
     # Check stack and crashed function details
@@ -293,7 +293,7 @@ def add_testcase(fixture, name, operation, oop: bool, background_thread: bool, e
         testcases[fixture] = []
     testcases[fixture].append({"name": name, "operation": operation, "oop": oop, "background_thread": background_thread, "expectation": expectation})
 
-operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashNullPtrCall", "CrashInvalidPtrCall", "AbortPureVirtualCall"]
+operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashNullPtrCall", "CrashInvalidPtrCall", "CrashNonExecutablePtrCall", "AbortPureVirtualCall"]
 oop = [True, False]
 background_thread = [True, False]
 
@@ -326,10 +326,17 @@ for op in operations:
                     exception_string += "DABORT"
 
                 exception_string += "_EL0"
-                fault_address = 0xFFFFFFFFFFFA7B00 if "InvalidPtr" in op else 0x0
+                if "InvalidPtr" in op:
+                    fault_address = 0xFFFFFFFFFFFA7B00
+                elif "NonExecutablePtrCall" in op:
+                    fault_address = None
+                else:
+                    fault_address = 0x0
                 expectation |= CoreFileTestExpectation(crash=True, relevant_func_name=op, relevant_func_locals={"local": "20250425"}, exception_string=exception_string, exception_fault_address=fault_address)
 
-                if "PtrCall" in op:
+                if "NonExecutablePtrCall" in op:
+                    expectation = expectation | CoreFileTestExpectation(relevant_func_name="g_1", relevant_func_locals={})
+                elif "PtrCall" in op:
                     expectation = expectation | CoreFileTestExpectation(relevant_frame_index=1)
             elif "Abort" in op:
                 expectation = expectation | CoreFileTestExpectation(relevant_frame_index=2, relevant_func_name="abort")

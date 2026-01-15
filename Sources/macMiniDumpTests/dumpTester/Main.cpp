@@ -67,6 +67,17 @@ NOINLINE bool CrashInvalidPtrCall (const std::string& /*corePath*/)
 	return false; // Unreachable
 }
 
+NOINLINE bool CrashNonExecutablePtrCall (const std::string& /*corePath*/)
+{
+	[[maybe_unused]] volatile int local = 20250425;
+
+	typedef void (*FuncPtr) ();
+	FuncPtr func = reinterpret_cast<FuncPtr> (const_cast<char*> (g_1.c_str ()));
+	func ();
+
+	return false; // Unreachable
+}
+
 class Base;
 void CallOpViaBasePtr (Base* pObject);
 class Base {
@@ -280,6 +291,7 @@ std::map<std::string, std::function<bool (const std::string&)>> g_operations = {
 	{ "CrashInvalidPtrWrite", CrashInvalidPtrWrite },
 	{ "CrashNullPtrCall", CrashNullPtrCall },
 	{ "CrashInvalidPtrCall", CrashInvalidPtrCall },
+	{ "CrashNonExecutablePtrCall", CrashNonExecutablePtrCall },
 	{ "AbortPureVirtualCall", AbortPureVirtualCall },
 };
 
