@@ -267,6 +267,43 @@ bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		  pCoreBuilder,
 	return pCoreBuilder->Build (pOStream);
 }
 
+bool SuspendAllThreadsExceptCurrentOne (mach_port_t taskPort, std::vector<mach_port_t>* pSuspendedThreadsOut)
+{
+	std::vector<mach_port_t> suspendedThreads;
+	thread_act_port_array_t  threads;
+	mach_msg_type_number_t   nThreads;
+	mach_port_t              thisThread = mach_thread_self ();
+
+	if (task_threads (taskPort, &threads, &nThreads) != KERN_SUCCESS)
+		return false;
+
+	for (unsigned int i = 0; i < nThreads; ++i) {
+		if (threads[i] == thisThread)
+			continue;
+
+		if (thread_suspend (threads[i]) == KERN_SUCCESS) {
+			suspendedThreads.push_back (threads[i]);
+		} else {
+			// Threads might start and end after calling task_threads, so we handle failures here gracefully
+			syslog (LOG_WARNING, "Failed to suspend thread #%u", i);
+		}
+	}
+
+	syslog (LOG_NOTICE, "Suspended %zu threads for self-dump", suspendedThreads.size ());
+
+	*pSuspendedThreadsOut = std::move (suspendedThreads);
+
+	return true;
+}
+
+void ResumeThreads (const std::vector<mach_port_t>& threads)
+{
+	for (mach_port_t thread : threads) {
+		if (thread_resume (thread) != KERN_SUCCESS)
+			syslog (LOG_WARNING, "Failed to resume thread port %u", thread);
+	}
+}
+
 bool AddThreadsToCore (mach_port_t			 taskPort,
 					   MachOCoreDumpBuilder* pCoreBuilder,
 					   ModuleList*			 pModules,
@@ -283,16 +320,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 	MemoryRegionList memoryRegions (taskPort);
 
-	// If the task is not suspended, there is a race condition: threads might start and end in the meantime
-	// We have to handle this situation (by gracefully handling errors)
 	for (unsigned int i = 0; i < nThreads; ++i) {
-		const bool threadSuspended = threads[i] != thisThread;
-
-		defer {
-			if (threadSuspended)
-				thread_resume (threads[i]);
-		};
-
 #ifdef __x86_64__
 		x86_thread_state64_t		ts;
 		x86_exception_state64_t		es;
@@ -453,22 +481,26 @@ bool MiniDumpWriteDump (mach_port_t					taskPort,
 	if (!pOStream->SetSize (0))
 		return false;
 
-	// If we are writing a core dump of another process, we need to suspend the task
+	// We want to create a core dump of the process with consistent (memory) state.
+	// Because of this, if its of another process, we need to suspend the task
+	// For a self dump, we suspend all threads except the current one upfront (there is an unavoidable race condition,
+	//   though: threads might start and end in the meantime)
 	const bool selfDump = taskPort == mach_task_self ();
+	std::vector<mach_port_t> suspendedThreads;
+
 	if (!selfDump) {
 		if (task_suspend (taskPort) != KERN_SUCCESS)
 			return false;
+	} else {
+		if (!SuspendAllThreadsExceptCurrentOne (taskPort, &suspendedThreads))
+			return false;
 	}
-
-	// FIXME: currently, in case of a self dump, threads are suspended on a one-by-one basis in AddThreadsToCore.
-	// For robustness, we should do this instead:
-	//   1.) suspend all threads (except this one), and store their id's
-	//   2.) create the core file
-	//   3.) resume all previously suspended threads
 
 	defer {
 		if (!selfDump)
 			task_resume (taskPort);
+		else
+			ResumeThreads (suspendedThreads);
 	};
 
 	// Core files have peculiar structure:
