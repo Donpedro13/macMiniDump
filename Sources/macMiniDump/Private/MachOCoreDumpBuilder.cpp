@@ -219,23 +219,6 @@ bool MachOCoreDumpBuilder::AddDataProviderForNoteCommand (const char*					 pOwne
 	return false;
 }
 
-bool MachOCoreDumpBuilder::AddDataProviderForSegmentCommand (uintptr_t						vmaddr,
-															 std::unique_ptr<IDataProvider> pDataProvider)
-{
-	for (auto& scPair : m_segment_cmds) {
-		if (scPair.first.vmaddr == vmaddr) {
-			assert (scPair.second == nullptr);
-
-			scPair.second		  = std::move (pDataProvider);
-			scPair.first.filesize = scPair.first.vmsize = scPair.second->GetSize ();
-
-			return true;
-		}
-	}
-
-	return false;
-}
-
 bool MachOCoreDumpBuilder::GetOffsetForNoteCommandPayload (const char* pOwnerName, uint64_t* pOffsetOut) const
 {
 	if (!m_loadCommandsFinalized)
