@@ -243,7 +243,7 @@ bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		  pCoreBuilder,
 																				 sizeof abInfo));
 
 	// All image infos
-	// The paylod of all image infos is dependent of the size of all load commands, so we have to "finalize" them before
+	// The payload of all image infos is dependent of the size of all load commands, so we have to "finalize" them before
 	// creating it
 	pCoreBuilder->FinalizeLoadCommands ();
 

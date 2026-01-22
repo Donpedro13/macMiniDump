@@ -285,7 +285,7 @@ bool MachOCoreDumpBuilder::WriteToOStream (const void* pData, size_t size, IRand
 {
 	assert (!(pData == NULL && size > 0));
 
-	// Debug feature: lLet's check if we would overwrite parts or not
+	// Debug feature: Let's check if we would overwrite parts or not
 #ifdef _DEBUG
 	size_t start = pOStream->GetPosition ();
 	size_t end	 = start + size;
