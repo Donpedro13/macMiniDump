@@ -177,6 +177,20 @@ def VerifySegmentsInCoreFile(core_path: str, callstacks: list[list]):
             
             if not found:
                 raise RuntimeError(f"Address {hex(address)} (stack {i}, frame {j}) not found in any core file segment")
+            
+    # Check if there are overlapping segments in the core file
+    # In other words: not a single byte of included memory should appear more than once in the core file
+    if segments:
+        segments_sorted = sorted(segments, key=lambda seg: seg[0])
+        prev_start, prev_end = segments_sorted[0]
+        for start, end in segments_sorted[1:]:
+            if start < prev_end:
+                raise RuntimeError(
+                    f"Overlapping core segments detected: "
+                    f"[{hex(prev_start)}, {hex(prev_end)}) overlaps [{hex(start)}, {hex(end)})"
+                )
+            if end > prev_end:
+                prev_start, prev_end = start, end
 
 def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
     # Check if reason is stopped

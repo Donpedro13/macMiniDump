@@ -10,8 +10,9 @@
 
 #include <CoreServices/CoreServices.h>
 
-#include <inttypes.h>
+#include <cinttypes>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -27,6 +28,49 @@
 
 namespace MMD {
 namespace {
+
+class DisjointIntervalSet {
+public:
+	// Insert interval [start, start + length). Overlapping intervals are merged.
+	void InsertAndMergeIfNeeded (uint64_t start, uint64_t length)
+	{
+		if (length == 0)
+			return;
+
+		uint64_t end = start + length;
+
+		// Find the first interval that could overlap (starts before or at our end)
+		auto it = m_intervals.upper_bound (start);
+		if (it != m_intervals.begin ())
+			--it;
+
+		// Merge with all overlapping or adjacent intervals
+		while (it != m_intervals.end () && it->first <= end) {
+			if (it->second >= start) {
+				// Intervals overlap or are adjacent - merge them
+				start = std::min (start, it->first);
+				end   = std::max (end, it->second);
+				it	  = m_intervals.erase (it);
+			} else {
+				++it;
+			}
+		}
+
+		m_intervals[start] = end;
+	}
+
+	// Iterate over all merged intervals as (start, length) pairs
+	template<typename Func>
+	void ForEach (Func&& func) const
+	{
+		for (const auto& [start, end] : m_intervals) {
+			func (start, end - start);
+		}
+	}
+
+private:
+	std::map<uint64_t, uint64_t> m_intervals; // start -> end
+};
 
 bool GetMemoryProtection (mach_port_t taskPort, uint64_t addr, uint64_t size, MemoryProtection* pProtOut)
 {
@@ -72,22 +116,6 @@ bool AddSegmentCommandFromProcessMemory (mach_port_t		   taskPort,
 		return false;
 
 	return AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, prot, startAddress, lengthInBytes);
-}
-
-// This function adds the surrounding piece of memory of address, using the given range. That is, (2 * range) + 1 bytes
-// will be included, where address will be the "middle point"
-bool AddSurroundingMemoryToCore (mach_port_t		   taskPort,
-								 MachOCoreDumpBuilder* pCoreBuilder,
-								 uint64_t			   address,
-								 size_t				   range)
-{
-	assert (address >= range && address <= UINT64_MAX - range); // Check for under- and overflow
-
-	const uint64_t middleAddress = address;
-	const uint64_t startAddress	 = middleAddress - range;
-	const size_t   length		 = (2 * range) + 1;
-
-	return AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, startAddress, length);
 }
 
 std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleList& modules)
@@ -320,6 +348,9 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 	MemoryRegionList memoryRegions (taskPort);
 
+	// Collect all memory ranges to add, then merge overlapping ones before adding to core
+	DisjointIntervalSet memoryRangesToAdd;
+
 	for (unsigned int i = 0; i < nThreads; ++i) {
 #ifdef __x86_64__
 		x86_thread_state64_t		ts;
@@ -398,9 +429,9 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			const size_t SurroundingsRange = 256;
 			// Make sure we do not under- or overflow (e.g. nullptr, or a very large address)
 			if (ip >= SurroundingsRange && ip <= UINT64_MAX - SurroundingsRange) {
-				if (!AddSurroundingMemoryToCore (taskPort, pCoreBuilder, ip, SurroundingsRange)) {
-					syslog (LOG_WARNING, "Failed to add surrounding memory for address %llu on thread #%d", ip, i);
-				}
+				const uint64_t start  = ip - SurroundingsRange;
+				const size_t   length = (2 * SurroundingsRange) + 1;
+				memoryRangesToAdd.InsertAndMergeIfNeeded (start, length);
 			} else {
 				syslog (LOG_WARNING, "Skipping address %llu on thread #%d because it is out of range!", ip, i);
 			}
@@ -429,9 +460,18 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		// changed since the state was captured (above). Should we capture it nonetheless, we would get a garbled call
 		// stack. This should be handled with explicitly copying the stack memory of the current thread, as close as
 		// possible to the context capture.
-		if (threads[i] != thisThread || pCrashContext != nullptr)
-			AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, stackStart - lengthInBytes, lengthInBytes);
+		if (threads[i] != thisThread || pCrashContext != nullptr) {
+			const uint64_t stackSegmentStart = stackStart - lengthInBytes;
+			memoryRangesToAdd.InsertAndMergeIfNeeded (stackSegmentStart, lengthInBytes);
+		}
 	}
+
+	// Add all merged memory ranges to core
+	memoryRangesToAdd.ForEach ([&] (uint64_t start, size_t length) {
+		if (!AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, start, length)) {
+			syslog (LOG_WARNING, "Failed to add memory segment at 0x%llx (length %zu)", start, length);
+		}
+	});
 
 	return true;
 }
