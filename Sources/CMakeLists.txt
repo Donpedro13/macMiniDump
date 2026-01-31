@@ -1,2 +1,3 @@
+ADD_SUBDIRECTORY("examples")
 ADD_SUBDIRECTORY("macMiniDump")
 ADD_SUBDIRECTORY("macMiniDumpTests")
