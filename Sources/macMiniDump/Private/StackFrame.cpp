@@ -64,11 +64,8 @@ StackFrameLookupResult LookupStackFrameForPCImplArm64 (mach_port_t taskPort, con
 	// information. A second level page is either a so-called regular page or a compressed page.
 
 	unwind_info_section_header unwindHeader;
-	std::unique_ptr<char[]>	   headerMem (ReadProcessMemory (taskPort, unwindInfoLoadAddr, sizeof (unwindHeader)));
-	if (!headerMem)
+	if (!ReadProcessMemoryInto (taskPort, unwindInfoLoadAddr, &unwindHeader))
 		return StackFrameLookupResult::Unknown;
-
-	memcpy (&unwindHeader, headerMem.get (), sizeof (unwindHeader));
 
 	// Calculate offset of index section
 	uintptr_t indexSectionAddr = unwindInfoLoadAddr + unwindHeader.indexSectionOffset;
@@ -84,11 +81,8 @@ StackFrameLookupResult LookupStackFrameForPCImplArm64 (mach_port_t taskPort, con
 		uintptr_t entryAddr = indexSectionAddr + mid * sizeof (unwind_info_section_header_index_entry);
 
 		unwind_info_section_header_index_entry midEntry;
-		std::unique_ptr<char[]>				   entryMem (ReadProcessMemory (taskPort, entryAddr, sizeof (midEntry)));
-		if (!entryMem)
+		if (!ReadProcessMemoryInto (taskPort, entryAddr, &midEntry))
 			return StackFrameLookupResult::Unknown;
-
-		memcpy (&midEntry, entryMem.get (), sizeof (midEntry));
 
 		if (midEntry.functionOffset <= pcOffset) {
 			low = mid + 1;
@@ -103,33 +97,24 @@ StackFrameLookupResult LookupStackFrameForPCImplArm64 (mach_port_t taskPort, con
 	uint32_t  targetIndex = low - 1;
 	uintptr_t entryAddr	  = indexSectionAddr + targetIndex * sizeof (unwind_info_section_header_index_entry);
 	unwind_info_section_header_index_entry entry;
-	std::unique_ptr<char[]>				   entryMem (ReadProcessMemory (taskPort, entryAddr, sizeof (entry)));
-	if (!entryMem)
+	if (!ReadProcessMemoryInto (taskPort, entryAddr, &entry))
 		return StackFrameLookupResult::Unknown;
-
-	memcpy (&entry, entryMem.get (), sizeof (entry));
 
 	if (entry.secondLevelPagesSectionOffset == 0)
 		return StackFrameLookupResult::Unknown;
 
 	uintptr_t secondLevelAddr = unwindInfoLoadAddr + entry.secondLevelPagesSectionOffset;
 
-	uint32_t				kind;
-	std::unique_ptr<char[]> kindMem (ReadProcessMemory (taskPort, secondLevelAddr, sizeof (kind)));
-	if (!kindMem)
+	uint32_t kind;
+	if (!ReadProcessMemoryInto (taskPort, secondLevelAddr, &kind))
 		return StackFrameLookupResult::Unknown;
-
-	kind = *reinterpret_cast<uint32_t*> (kindMem.get ());
 
 	compact_unwind_encoding_t encoding = 0;
 
 	if (kind == UNWIND_SECOND_LEVEL_REGULAR) {
 		unwind_info_regular_second_level_page_header pageHeader;
-		std::unique_ptr<char[]> pageMem (ReadProcessMemory (taskPort, secondLevelAddr, sizeof (pageHeader)));
-		if (!pageMem)
+		if (!ReadProcessMemoryInto (taskPort, secondLevelAddr, &pageHeader))
 			return StackFrameLookupResult::Unknown;
-
-		memcpy (&pageHeader, pageMem.get (), sizeof (pageHeader));
 
 		uintptr_t entriesAddr	 = secondLevelAddr + sizeof (unwind_info_regular_second_level_page_header);
 		uint32_t  pageEntryCount = pageHeader.entryCount;
@@ -143,11 +128,8 @@ StackFrameLookupResult LookupStackFrameForPCImplArm64 (mach_port_t taskPort, con
 			uintptr_t pEntryAddr = entriesAddr + pMid * sizeof (unwind_info_regular_second_level_entry);
 
 			unwind_info_regular_second_level_entry pEntry;
-			std::unique_ptr<char[]> pEntryMem (ReadProcessMemory (taskPort, pEntryAddr, sizeof (pEntry)));
-			if (!pEntryMem)
+			if (!ReadProcessMemoryInto (taskPort, pEntryAddr, &pEntry))
 				return StackFrameLookupResult::Unknown;
-
-			memcpy (&pEntry, pEntryMem.get (), sizeof (pEntry));
 
 			if (pEntry.functionOffset <= pcOffset) {
 				pLow = pMid + 1;
@@ -162,21 +144,15 @@ StackFrameLookupResult LookupStackFrameForPCImplArm64 (mach_port_t taskPort, con
 		uint32_t  pTargetIndex = pLow - 1;
 		uintptr_t pEntryAddr   = entriesAddr + pTargetIndex * sizeof (unwind_info_regular_second_level_entry);
 		unwind_info_regular_second_level_entry pEntry;
-		std::unique_ptr<char[]>				   pEntryMem (ReadProcessMemory (taskPort, pEntryAddr, sizeof (pEntry)));
-		if (!pEntryMem)
+		if (!ReadProcessMemoryInto (taskPort, pEntryAddr, &pEntry))
 			return StackFrameLookupResult::Unknown;
-
-		memcpy (&pEntry, pEntryMem.get (), sizeof (pEntry));
 
 		encoding = pEntry.encoding;
 
 	} else if (kind == UNWIND_SECOND_LEVEL_COMPRESSED) {
 		unwind_info_compressed_second_level_page_header pageHeader;
-		std::unique_ptr<char[]> pageMem (ReadProcessMemory (taskPort, secondLevelAddr, sizeof (pageHeader)));
-		if (!pageMem)
+		if (!ReadProcessMemoryInto (taskPort, secondLevelAddr, &pageHeader))
 			return StackFrameLookupResult::Unknown;
-
-		memcpy (&pageHeader, pageMem.get (), sizeof (pageHeader));
 
 		uintptr_t entriesAddr	 = secondLevelAddr + sizeof (unwind_info_compressed_second_level_page_header);
 		uint32_t  pageEntryCount = pageHeader.entryCount;
@@ -191,12 +167,9 @@ StackFrameLookupResult LookupStackFrameForPCImplArm64 (mach_port_t taskPort, con
 			uint32_t  pMid		 = pLow + (pHigh - pLow) / 2;
 			uintptr_t pEntryAddr = entriesAddr + pMid * sizeof (uint32_t);
 
-			uint32_t				pEntryVal;
-			std::unique_ptr<char[]> pEntryMem (ReadProcessMemory (taskPort, pEntryAddr, sizeof (pEntryVal)));
-			if (!pEntryMem)
+			uint32_t pEntryVal;
+			if (!ReadProcessMemoryInto (taskPort, pEntryAddr, &pEntryVal))
 				return StackFrameLookupResult::Unknown;
-
-			pEntryVal = *reinterpret_cast<uint32_t*> (pEntryMem.get ());
 
 			uint32_t entryFuncOffset = UNWIND_INFO_COMPRESSED_ENTRY_FUNC_OFFSET (pEntryVal);
 
@@ -210,36 +183,25 @@ StackFrameLookupResult LookupStackFrameForPCImplArm64 (mach_port_t taskPort, con
 		if (pLow == 0)
 			return StackFrameLookupResult::Unknown;
 
-		uint32_t				pTargetIndex = pLow - 1;
-		uintptr_t				pEntryAddr	 = entriesAddr + pTargetIndex * sizeof (uint32_t);
-		uint32_t				pEntryVal;
-		std::unique_ptr<char[]> pEntryMem (ReadProcessMemory (taskPort, pEntryAddr, sizeof (pEntryVal)));
-		if (!pEntryMem)
+		uint32_t  pTargetIndex = pLow - 1;
+		uintptr_t pEntryAddr   = entriesAddr + pTargetIndex * sizeof (uint32_t);
+		uint32_t  pEntryVal;
+		if (!ReadProcessMemoryInto (taskPort, pEntryAddr, &pEntryVal))
 			return StackFrameLookupResult::Unknown;
-
-		pEntryVal = *reinterpret_cast<uint32_t*> (pEntryMem.get ());
 
 		uint16_t encodingIndex = UNWIND_INFO_COMPRESSED_ENTRY_ENCODING_INDEX (pEntryVal);
 
 		if (encodingIndex < unwindHeader.commonEncodingsArrayCount) {
 			uintptr_t commonEncodingsAddr = unwindInfoLoadAddr + unwindHeader.commonEncodingsArraySectionOffset +
 											encodingIndex * sizeof (compact_unwind_encoding_t);
-			std::unique_ptr<char[]> encMem (
-				ReadProcessMemory (taskPort, commonEncodingsAddr, sizeof (compact_unwind_encoding_t)));
-			if (!encMem)
+			if (!ReadProcessMemoryInto (taskPort, commonEncodingsAddr, &encoding))
 				return StackFrameLookupResult::Unknown;
-
-			encoding = *reinterpret_cast<compact_unwind_encoding_t*> (encMem.get ());
 		} else {
 			uint16_t  pageEncodingIndex = encodingIndex - unwindHeader.commonEncodingsArrayCount;
 			uintptr_t pageEncodingsAddr = secondLevelAddr + pageHeader.encodingsPageOffset +
 										  pageEncodingIndex * sizeof (compact_unwind_encoding_t);
-			std::unique_ptr<char[]> encMem (
-				ReadProcessMemory (taskPort, pageEncodingsAddr, sizeof (compact_unwind_encoding_t)));
-			if (!encMem)
+			if (!ReadProcessMemoryInto (taskPort, pageEncodingsAddr, &encoding))
 				return StackFrameLookupResult::Unknown;
-
-			encoding = *reinterpret_cast<compact_unwind_encoding_t*> (encMem.get ());
 		}
 	} else {
 		return StackFrameLookupResult::Unknown;

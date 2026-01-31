@@ -43,17 +43,22 @@ bool GetMemoryRegionEndDistance (task_t task, uintptr_t address, vm_size_t* pDis
 
 } // namespace
 
+bool ReadProcessMemoryInto (mach_port_t taskPort, uintptr_t address, void* buffer, size_t size)
+{
+	vm_size_t outSize;
+
+	return vm_read_overwrite (taskPort, address, size, reinterpret_cast<vm_address_t> (buffer), &outSize) ==
+		   KERN_SUCCESS;
+}
+
 std::unique_ptr<char[]> ReadProcessMemory (mach_port_t taskPort, uintptr_t address, size_t size)
 {
 	std::unique_ptr<char[]> result (new char[size]);
 
-	vm_size_t	  outSize;
-	kern_return_t kr =
-		vm_read_overwrite (taskPort, address, size, reinterpret_cast<vm_address_t> (result.get ()), &outSize);
-	if (kr != KERN_SUCCESS)
+	if (!ReadProcessMemoryInto (taskPort, address, result.get (), size))
 		return nullptr;
-	else
-		return result;
+
+	return result;
 }
 
 bool ReadProcessMemoryString (mach_port_t taskPort, uintptr_t address, size_t maxSize, std::string* pStringOut)

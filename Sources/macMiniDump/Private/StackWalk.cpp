@@ -25,11 +25,7 @@ uint64_t DerefPtr (mach_port_t taskPort, const uint64_t ptr)
 	assert (ptr != 0);
 
 	uint64_t result = 0;
-
-	std::unique_ptr<char[]> mem (ReadProcessMemory (taskPort, ptr, sizeof (uint64_t)));
-
-	if (mem != nullptr)
-		result = *reinterpret_cast<uint64_t*> (mem.get ());
+	ReadProcessMemoryInto (taskPort, ptr, &result);
 
 	return result;
 }
@@ -56,16 +52,13 @@ bool ExceptionMightBeControlTransferRelated (MachOCore::EXC const& exc)
 bool IsPreviousInstructionBLKind (mach_port_t taskPort, uintptr_t instructionPointer)
 {
 	// arm64 instructions are fixed 4-bytes in size
-	constexpr size_t		instructionSize = 4;
-	std::unique_ptr<char[]> mem (ReadProcessMemory (taskPort, instructionPointer - instructionSize, instructionSize));
-
-	if (mem == nullptr) {
+	constexpr size_t instructionSize = 4;
+	uint32_t		 instruction;
+	if (!ReadProcessMemoryInto (taskPort, instructionPointer - instructionSize, &instruction)) {
 		syslog (LOG_WARNING, "Failed to read memory at %" PRIuPTR, instructionPointer - instructionSize);
 
 		return false;
 	}
-
-	const uint32_t instruction = *reinterpret_cast<uint32_t*> (mem.get ());
 
 	// BL: bits [31:26]; see:
 	// https://developer.arm.com/documentation/ddi0602/2024-09/Base-Instructions/BL--Branch-with-link-
@@ -95,16 +88,13 @@ bool IsPreviousInstructionSVC ([[maybe_unused]] mach_port_t		  taskPort,
 							   [[maybe_unused]] uintptr_t		  instructionPointer)
 {
 	// arm64 instructions are fixed 4-bytes in size
-	constexpr size_t		instructionSize = 4;
-	std::unique_ptr<char[]> mem (ReadProcessMemory (taskPort, instructionPointer - instructionSize, instructionSize));
-
-	if (mem == nullptr) {
+	constexpr size_t instructionSize = 4;
+	uint32_t		 instruction;
+	if (!ReadProcessMemoryInto (taskPort, instructionPointer - instructionSize, &instruction)) {
 		syslog (LOG_WARNING, "Failed to read memory at %" PRIuPTR, instructionPointer - instructionSize);
 
 		return false;
 	}
-
-	const uint32_t instruction = *reinterpret_cast<uint32_t*> (mem.get ());
 
 	// Check if instruction is SVC; see:
 	// SVC: bits [31:21] = 0b11010100000

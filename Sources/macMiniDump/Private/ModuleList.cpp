@@ -76,13 +76,12 @@ bool CreateModuleInfo (mach_port_t			   taskPort,
 					   const char*			   pImageFilePath,
 					   ModuleList::ModuleInfo* pModuleInfoOut)
 {
-	std::unique_ptr<char[]> pHeaderRawBytes = ReadProcessMemory (taskPort, loadAddress, sizeof (mach_header_64));
-	if (pHeaderRawBytes == nullptr)
+	mach_header_64 header;
+	if (!ReadProcessMemoryInto (taskPort, loadAddress, &header))
 		return false;
 
-	mach_header_64*			pHeader = reinterpret_cast<mach_header_64*> (pHeaderRawBytes.get ());
 	std::unique_ptr<char[]> pRawBytes =
-		ReadProcessMemory (taskPort, loadAddress, sizeof (mach_header_64) + pHeader->sizeofcmds);
+		ReadProcessMemory (taskPort, loadAddress, sizeof (mach_header_64) + header.sizeofcmds);
 	if (pRawBytes == nullptr)
 		return false;
 
@@ -160,30 +159,27 @@ ModuleList::ModuleList (mach_port_t taskPort)
 
 	const uintptr_t dyldInfoAddress = task_dyld_info.all_image_info_addr;
 
-	std::unique_ptr<char[]> dyldInfoBytes =
-		ReadProcessMemory (taskPort, dyldInfoAddress, sizeof (dyld_all_image_infos));
-	if (dyldInfoBytes == nullptr)
+	dyld_all_image_infos imageInfo;
+	if (!ReadProcessMemoryInto (taskPort, dyldInfoAddress, &imageInfo))
 		return;
 
-	dyld_all_image_infos* pImageInfo = reinterpret_cast<dyld_all_image_infos*> (dyldInfoBytes.get ());
-
 	std::unique_ptr<char[]> dyldInfosBytes = ReadProcessMemory (taskPort,
-																(uintptr_t) pImageInfo->infoArray,
-																pImageInfo->infoArrayCount * sizeof (dyld_image_info));
+																(uintptr_t) imageInfo.infoArray,
+																imageInfo.infoArrayCount * sizeof (dyld_image_info));
 	if (dyldInfosBytes == nullptr)
 		return;
 
 	// Quirk: the dyld image itself is not listed in the image array, so we have to add it manually
 	std::string dyldImagePath = "/usr/lib/dyld";
 	// Try to read dyld path; if not available or fails, we go with a default value
-	if (pImageInfo->version >= 15)
-		ReadProcessMemoryString (taskPort, (uintptr_t) pImageInfo->dyldPath, 4096, &dyldImagePath);
+	if (imageInfo.version >= 15)
+		ReadProcessMemoryString (taskPort, (uintptr_t) imageInfo.dyldPath, 4096, &dyldImagePath);
 
-	assert (pImageInfo->version >=
+	assert (imageInfo.version >=
 			9); // dyldImageLoadAddress was added in version 9, macOS 10.6, which is not supported by this library
 	ModuleInfo dyldModuleInfo;
 	if (!CreateModuleInfo (taskPort,
-						   (uintptr_t) pImageInfo->dyldImageLoadAddress,
+						   (uintptr_t) imageInfo.dyldImageLoadAddress,
 						   dyldImagePath.c_str (),
 						   &dyldModuleInfo)) {
 		Invalidate ();
@@ -194,7 +190,7 @@ ModuleList::ModuleList (mach_port_t taskPort)
 	m_moduleInfos.emplace (dyldModuleInfo.loadAddress, std::move (dyldModuleInfo));
 
 	dyld_image_info* pImageInfoArray = reinterpret_cast<dyld_image_info*> (dyldInfosBytes.get ());
-	for (uint32_t i = 0; i < pImageInfo->infoArrayCount; ++i) {
+	for (uint32_t i = 0; i < imageInfo.infoArrayCount; ++i) {
 		ModuleInfo moduleInfo;
 		if (!CreateModuleInfo (taskPort,
 							   (uintptr_t) pImageInfoArray[i].imageLoadAddress,
