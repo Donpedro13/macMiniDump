@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <spawn.h>
+#include <syslog.h>
 #include <unistd.h>
 
 #include <functional>
@@ -28,6 +29,43 @@ std::string g_corePath;
 volatile int a = 0;
 
 const uintptr_t InvalidPtr = 0xFFFFFFFFFFFA7B00;
+
+size_t GetTotalMachPortRightsRefs ()
+{
+	mach_port_name_array_t names	  = nullptr;
+	mach_msg_type_number_t namesCount = 0;
+	mach_port_type_array_t types	  = nullptr;
+	mach_msg_type_number_t typesCount = 0;
+
+	if (mach_port_names (mach_task_self (), &names, &namesCount, &types, &typesCount) != KERN_SUCCESS)
+		return 0;
+
+	size_t result  = 0;
+
+	for (size_t i = 0; i < namesCount; ++i) {
+		mach_port_urefs_t refs = 0;
+
+		if (mach_port_get_refs (mach_task_self (), names[i], MACH_PORT_RIGHT_RECEIVE, &refs) != KERN_SUCCESS)
+			return 0;
+
+		result += refs;
+		
+		if (mach_port_get_refs (mach_task_self (), names[i], MACH_PORT_RIGHT_SEND, &refs) != KERN_SUCCESS)
+			return 0;
+
+		result += refs;
+
+		if (mach_port_get_refs (mach_task_self (), names[i], MACH_PORT_RIGHT_SEND_ONCE, &refs) != KERN_SUCCESS)
+			return 0;
+
+		result += refs;
+	}
+
+	vm_deallocate (mach_task_self (), (vm_address_t) names, namesCount * sizeof (mach_port_name_t));
+	vm_deallocate (mach_task_self (), (vm_address_t) types, typesCount * sizeof (mach_port_type_t));
+
+	return result;
+}
 
 NOINLINE void Spin ()
 {
@@ -106,6 +144,25 @@ NOINLINE bool AbortPureVirtualCall (const std::string& /*corePath*/)
 
 bool CreateCoreFileImpl (mach_port_t task, const std::string& corePath, MMDCrashContext* pCrashContext = nullptr)
 {
+	// Best-effort (in-process crash cases won't get to execute the destructor below) mach port right refs leak checker 
+	class MachPortRightRefsLeakChecker {
+	public:
+		MachPortRightRefsLeakChecker () : m_initialCount (GetTotalMachPortRightsRefs ()) {}
+		~MachPortRightRefsLeakChecker ()
+		{
+			const size_t finalCount = GetTotalMachPortRightsRefs ();
+			if (finalCount > m_initialCount) {
+				std::cerr << "Detected mach port rights refs leak: initial=" << m_initialCount
+						  << ", final=" << finalCount << ", leaked=" << (finalCount - m_initialCount) << std::endl;
+
+				// No test case expects a crash with execution getting here, or no crash with exit code 1 -> failure
+				_exit (1);
+			}
+		}
+	private:
+		size_t m_initialCount;
+	} machPortLeakChecker;
+
 	const char* pCorePath = corePath.c_str ();
 	// Make sure the destination file exists and is empty
 	int fd = open (pCorePath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
@@ -366,6 +423,9 @@ int main (int argc, char* argv[])
 
 	// Create a few threads so the dump contains more state
 	SetupMiscThreads ();
+
+	// The first call to syslog allocates some port refs, so we explicitly make a (probably first) call here
+	syslog (LOG_NOTICE, "dumpTester started");
 
 	// "OOP worker mode" is not exposed directly, it's a technical detail. Parameters have different positions in
 	// this mode. Cherry-pick that case first.

@@ -10,6 +10,8 @@ SET(macMiniDump_sources
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MachOCoreDumpBuilder.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MachOCoreDumpBuilder.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MachOCoreDumpBuilder.inl
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/MachPortSendRightRef.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/MachPortSendRightRef.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/DataAccess.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/DataAccess.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/ModuleList.hpp

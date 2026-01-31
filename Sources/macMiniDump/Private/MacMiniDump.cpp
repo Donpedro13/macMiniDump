@@ -20,6 +20,7 @@
 #include "FileOStream.hpp"
 #include "MachOCoreDumpBuilder.hpp"
 #include "MachOCoreInternal.hpp"
+#include "MachPortSendRightRef.hpp"
 #include "MemoryRegionList.hpp"
 #include "ModuleList.hpp"
 #include "ProcessMemoryReaderDataPtr.hpp"
@@ -49,7 +50,7 @@ public:
 			if (it->second >= start) {
 				// Intervals overlap or are adjacent - merge them
 				start = std::min (start, it->first);
-				end   = std::max (end, it->second);
+				end	  = std::max (end, it->second);
 				it	  = m_intervals.erase (it);
 			} else {
 				++it;
@@ -271,8 +272,8 @@ bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		  pCoreBuilder,
 																				 sizeof abInfo));
 
 	// All image infos
-	// The payload of all image infos is dependent of the size of all load commands, so we have to "finalize" them before
-	// creating it
+	// The payload of all image infos is dependent of the size of all load commands, so we have to "finalize" them
+	// before creating it
 	pCoreBuilder->FinalizeLoadCommands ();
 
 	uint64_t imageInfosPayloadOffset = 0;
@@ -295,27 +296,38 @@ bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		  pCoreBuilder,
 	return pCoreBuilder->Build (pOStream);
 }
 
-bool SuspendAllThreadsExceptCurrentOne (mach_port_t taskPort, std::vector<mach_port_t>* pSuspendedThreadsOut)
+bool SuspendAllThreadsExceptCurrentOne (mach_port_t taskPort, std::vector<MachPortSendRightRef>* pSuspendedThreadsOut)
 {
-	std::vector<mach_port_t> suspendedThreads;
-	thread_act_port_array_t  threads;
-	mach_msg_type_number_t   nThreads;
-	mach_port_t              thisThread = mach_thread_self ();
+	std::vector<MachPortSendRightRef> suspendedThreads;
+	thread_act_port_array_t			  threads;
+	mach_msg_type_number_t			  nThreads;
+	MachPortSendRightRef			  thisThreadRef = MachPortSendRightRef::Wrap (mach_thread_self ());
 
 	if (task_threads (taskPort, &threads, &nThreads) != KERN_SUCCESS)
 		return false;
 
+	std::vector<MachPortSendRightRef> threadRefs;
+	threadRefs.reserve (nThreads);
 	for (unsigned int i = 0; i < nThreads; ++i) {
-		if (threads[i] == thisThread)
-			continue;
+		threadRefs.push_back (MachPortSendRightRef::Wrap (threads[i]));
+	}
 
-		if (thread_suspend (threads[i]) == KERN_SUCCESS) {
-			suspendedThreads.push_back (threads[i]);
+	for (unsigned int i = 0; i < nThreads; ++i) {
+		MachPortSendRightRef& threadRef = threadRefs[i];
+
+		if (threadRef.Get () == thisThreadRef.Get ()) {
+			continue;
+		}
+
+		if (thread_suspend (threadRef.Get ()) == KERN_SUCCESS) {
+			suspendedThreads.push_back (std::move (threadRef));
 		} else {
 			// Threads might start and end after calling task_threads, so we handle failures here gracefully
 			syslog (LOG_WARNING, "Failed to suspend thread #%u", i);
 		}
 	}
+
+	vm_deallocate (mach_task_self (), (vm_address_t) threads, nThreads * sizeof (thread_act_t));
 
 	syslog (LOG_NOTICE, "Suspended %zu threads for self-dump", suspendedThreads.size ());
 
@@ -324,11 +336,11 @@ bool SuspendAllThreadsExceptCurrentOne (mach_port_t taskPort, std::vector<mach_p
 	return true;
 }
 
-void ResumeThreads (const std::vector<mach_port_t>& threads)
+void ResumeThreads (const std::vector<MachPortSendRightRef>& threads)
 {
-	for (mach_port_t thread : threads) {
-		if (thread_resume (thread) != KERN_SUCCESS)
-			syslog (LOG_WARNING, "Failed to resume thread port %u", thread);
+	for (const MachPortSendRightRef& threadRef : threads) {
+		if (thread_resume (threadRef.Get ()) != KERN_SUCCESS)
+			syslog (LOG_WARNING, "Failed to resume thread port %u", threadRef.Get ());
 	}
 }
 
@@ -339,10 +351,15 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 {
 	thread_act_port_array_t threads;
 	mach_msg_type_number_t	nThreads;
-	mach_port_t				thisThread = mach_thread_self ();
+	MachPortSendRightRef	thisThreadRef = MachPortSendRightRef::Wrap (mach_thread_self ());
 
 	if (task_threads (taskPort, &threads, &nThreads) != KERN_SUCCESS)
 		return false;
+
+	std::vector<MachPortSendRightRef> threadRefs;
+	threadRefs.reserve (nThreads);
+	for (unsigned int i = 0; i < nThreads; ++i)
+		threadRefs.push_back (MachPortSendRightRef::Wrap (threads[i]));
 
 	syslog (LOG_NOTICE, "Enumerating %d threads...", nThreads);
 
@@ -373,7 +390,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		mach_msg_type_number_t		  identifier_info_count = THREAD_IDENTIFIER_INFO_COUNT;
 		uint64_t					  tid					= 0;
 
-		if (thread_info (threads[i],
+		if (thread_info (threadRefs[i].Get (),
 						 THREAD_IDENTIFIER_INFO,
 						 (thread_info_t) &identifier_info,
 						 &identifier_info_count) == KERN_SUCCESS) {
@@ -390,10 +407,10 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		} else {
 			syslog (LOG_NOTICE, "Adding thread (tid %" PRIu64 " )", tid);
 
-			if (thread_get_state (threads[i], gprFlavor, (thread_state_t) &ts, &gprCount) != KERN_SUCCESS)
+			if (thread_get_state (threadRefs[i].Get (), gprFlavor, (thread_state_t) &ts, &gprCount) != KERN_SUCCESS)
 				continue;
 
-			if (thread_get_state (threads[i], excFlavor, (thread_state_t) &es, &excCount) != KERN_SUCCESS)
+			if (thread_get_state (threadRefs[i].Get (), excFlavor, (thread_state_t) &es, &excCount) != KERN_SUCCESS)
 				continue;
 		}
 
@@ -460,7 +477,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		// changed since the state was captured (above). Should we capture it nonetheless, we would get a garbled call
 		// stack. This should be handled with explicitly copying the stack memory of the current thread, as close as
 		// possible to the context capture.
-		if (threads[i] != thisThread || pCrashContext != nullptr) {
+		if (threadRefs[i].Get () != thisThreadRef.Get () || pCrashContext != nullptr) {
 			const uint64_t stackSegmentStart = stackStart - lengthInBytes;
 			memoryRangesToAdd.InsertAndMergeIfNeeded (stackSegmentStart, lengthInBytes);
 		}
@@ -472,6 +489,8 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			syslog (LOG_WARNING, "Failed to add memory segment at 0x%llx (length %zu)", start, length);
 		}
 	});
+
+	vm_deallocate (mach_task_self (), (vm_address_t) threads, nThreads * sizeof (thread_act_t));
 
 	return true;
 }
@@ -512,8 +531,8 @@ bool MiniDumpWriteDump (mach_port_t					taskPort,
 	// Because of this, if its of another process, we need to suspend the task
 	// For a self dump, we suspend all threads except the current one upfront (there is an unavoidable race condition,
 	//   though: threads might start and end in the meantime)
-	const bool selfDump = taskPort == mach_task_self ();
-	std::vector<mach_port_t> suspendedThreads;
+	const bool						  selfDump = taskPort == mach_task_self ();
+	std::vector<MachPortSendRightRef> suspendedThreads;
 
 	if (!selfDump) {
 		if (task_suspend (taskPort) != KERN_SUCCESS)
