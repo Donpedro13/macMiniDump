@@ -7,13 +7,7 @@ namespace MMD {
 
 FileOStream::FileOStream (FILE* pFile): IRandomAccessBinaryOStream (), m_fd (fileno (pFile)) {}
 
-FileOStream::FileOStream (int fd): m_fd (fd)
-{
-	/*int flags = fcntl(fd, F_GETFD);
-	// If file is not writable (or can't tell if writable), bail
-	if (flags == -1 || (flags != O_RDWR && flags != O_WRONLY))
-		Cleanup ();*/
-}
+FileOStream::FileOStream (int fd): m_fd (fd) {}
 
 FileOStream::FileOStream (const std::string filePath)
 {
