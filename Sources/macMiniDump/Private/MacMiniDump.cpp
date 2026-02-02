@@ -1,4 +1,4 @@
-#include "MacMiniDump.hpp"
+#include "MMD/MacMiniDump.hpp"
 
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
@@ -17,7 +17,7 @@
 #include <vector>
 
 #include "Defer.hpp"
-#include "FileOStream.hpp"
+#include "MMD/FileOStream.hpp"
 #include "MachOCoreDumpBuilder.hpp"
 #include "MachOCoreInternal.hpp"
 #include "MachPortSendRightRef.hpp"

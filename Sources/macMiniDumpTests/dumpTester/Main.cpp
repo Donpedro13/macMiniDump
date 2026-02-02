@@ -13,8 +13,8 @@
 #include <string>
 #include <thread>
 
-#include "FileOStream.hpp"
-#include "MacMiniDump.hpp"
+#include "MMD/FileOStream.hpp"
+#include "MMD/MacMiniDump.hpp"
 
 #define NOINLINE __attribute__ ((noinline))
 

@@ -3,8 +3,8 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#include "FileOStream.hpp"
-#include "MacMiniDump.hpp"
+#include "MMD/FileOStream.hpp"
+#include "MMD/MacMiniDump.hpp"
 
 void SignalHandler (int /*signal*/, siginfo_t* /*pSigInfo*/, void* pContext)
 {

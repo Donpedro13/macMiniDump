@@ -1,8 +1,8 @@
 SET(macMiniDump_sources
-		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MacMiniDump.hpp
-		${CMAKE_CURRENT_SOURCE_DIR}/Includes/IRandomAccessBinaryOStream.hpp
-		${CMAKE_CURRENT_SOURCE_DIR}/Includes/FileOStream.hpp
-		${CMAKE_CURRENT_SOURCE_DIR}/Includes/Logging.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MMD/MacMiniDump.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MMD/IRandomAccessBinaryOStream.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MMD/FileOStream.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MMD/Logging.hpp
 
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MacMiniDump.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/IRandomAccessBinaryOStream.cpp

@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 
-#include "MacMiniDump.hpp"
+#include "MMD/MacMiniDump.hpp"
 
 #ifdef __cplusplus
 	#error This file must be compiled as C, not C++!

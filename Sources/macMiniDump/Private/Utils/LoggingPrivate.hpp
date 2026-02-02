@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "Logging.hpp"
+#include "MMD/Logging.hpp"
 
 namespace MMD {
 namespace Impl {

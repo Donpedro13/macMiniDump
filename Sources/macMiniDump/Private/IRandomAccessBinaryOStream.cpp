@@ -1,4 +1,4 @@
-#include "IRandomAccessBinaryOStream.hpp"
+#include "MMD/IRandomAccessBinaryOStream.hpp"
 
 namespace MMD {
 

@@ -1,5 +1,5 @@
-#include "FileOStream.hpp"
-#include "MacMiniDump.hpp"
+#include "MMD/FileOStream.hpp"
+#include "MMD/MacMiniDump.hpp"
 
 #include <fcntl.h>
 #include <unistd.h>
