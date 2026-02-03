@@ -12,6 +12,7 @@
 #include <cinttypes>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "MMD/FileOStream.hpp"
@@ -117,6 +118,26 @@ bool AddSegmentCommandFromProcessMemory (mach_port_t		   taskPort,
 		return false;
 
 	return AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, prot, startAddress, lengthInBytes);
+}
+
+// Creates a JSON payload for the "process metadata" LC_NOTE, containing thread IDs.
+// The format follows LLVM's implementation (D158785):
+// {"threads":[{"thread_id":123},{"thread_id":456},...]}
+std::string CreateProcessMetadataPayload (const std::vector<uint64_t>& threadIds)
+{
+	std::string result = "{\"threads\":[";
+
+	for (size_t i = 0; i < threadIds.size (); ++i) {
+		if (i > 0)
+			result += ",";
+		result += "{\"thread_id\":";
+		result += std::to_string (threadIds[i]);
+		result += "}";
+	}
+
+	result += "]}";
+
+	return result;
 }
 
 std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleList& modules)
@@ -250,9 +271,10 @@ std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const Modu
 	return result;
 }
 
-bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		  pCoreBuilder,
-						  const ModuleList&			  modules,
-						  IRandomAccessBinaryOStream* pOStream)
+bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		    pCoreBuilder,
+						  const ModuleList&			    modules,
+						  const std::vector<uint64_t>&  threadIds,
+						  IRandomAccessBinaryOStream*   pOStream)
 {
 	// Add all load command payloads when needed, calculate data offsets, then write out core dump content
 
@@ -270,6 +292,13 @@ bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		  pCoreBuilder,
 												 std::make_unique<DataProvider> (new CopiedDataPtr (&abInfo,
 																									sizeof abInfo),
 																				 sizeof abInfo));
+
+	// Process metadata (thread IDs in JSON format, per LLVM D158785)
+	std::string processMetadataPayload = CreateProcessMetadataPayload (threadIds);
+	pCoreBuilder->AddDataProviderForNoteCommand (MachOCore::ProcessMetadataOwner,
+												 std::make_unique<DataProvider> (new CopiedDataPtr (processMetadataPayload.data (),
+																									processMetadataPayload.size ()),
+																				 processMetadataPayload.size ()));
 
 	// All image infos
 	// The payload of all image infos is dependent of the size of all load commands, so we have to "finalize" them
@@ -344,14 +373,17 @@ void ResumeThreads (const std::vector<MachPortSendRightRef>& threads)
 	}
 }
 
-bool AddThreadsToCore (mach_port_t			 taskPort,
-					   MachOCoreDumpBuilder* pCoreBuilder,
-					   ModuleList*			 pModules,
-					   MMDCrashContext*		 pCrashContext /*= nullptr*/)
+bool AddThreadsToCore (mach_port_t			  taskPort,
+					   MachOCoreDumpBuilder*  pCoreBuilder,
+					   ModuleList*			  pModules,
+					   std::vector<uint64_t>* pThreadIds,
+					   MMDCrashContext*		  pCrashContext /*= nullptr*/)
 {
 	thread_act_port_array_t threads;
 	mach_msg_type_number_t	nThreads;
 	MachPortSendRightRef	thisThreadRef = MachPortSendRightRef::Wrap (mach_thread_self ());
+
+	pThreadIds->clear ();
 
 	if (task_threads (taskPort, &threads, &nThreads) != KERN_SUCCESS)
 		return false;
@@ -425,6 +457,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		memcpy (&exc.exc, &es, sizeof es);
 
 		pCoreBuilder->AddThreadCommand (gpr, exc);
+		pThreadIds->push_back (tid);
 
 		MachOCore::GPRPointers pointers (gpr);
 
@@ -494,6 +527,7 @@ bool AddNotesToCore (MachOCoreDumpBuilder* pCoreBuilder)
 {
 	// Payloads for these will be added later
 	pCoreBuilder->AddNoteCommand (MachOCore::AddrableBitsOwner);
+	pCoreBuilder->AddNoteCommand (MachOCore::ProcessMetadataOwner);
 	pCoreBuilder->AddNoteCommand (MachOCore::AllImageInfosOwner);
 
 	return true;
@@ -553,15 +587,16 @@ bool MiniDumpWriteDump (mach_port_t					taskPort,
 	//  * we have to know the size of all payloads
 	//  * we need to update offset fields in the load commands, and payloads
 	//  * then finally, we can write out the content itself
-	MachOCoreDumpBuilder coreBuilder;
-	ModuleList			 modules (taskPort);
-	if (!AddThreadsToCore (taskPort, &coreBuilder, &modules, pCrashContext))
+	MachOCoreDumpBuilder  coreBuilder;
+	ModuleList			  modules (taskPort);
+	std::vector<uint64_t> threadIds;
+	if (!AddThreadsToCore (taskPort, &coreBuilder, &modules, &threadIds, pCrashContext))
 		return false;
 
 	if (!AddNotesToCore (&coreBuilder))
 		return false;
 
-	if (!AddPayloadsAndWrite (&coreBuilder, modules, pOStream))
+	if (!AddPayloadsAndWrite (&coreBuilder, modules, threadIds, pOStream))
 		return false;
 
 	return true;

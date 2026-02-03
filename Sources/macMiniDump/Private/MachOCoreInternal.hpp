@@ -132,6 +132,7 @@ public:
 
 extern const char* AddrableBitsOwner;
 extern const char* AllImageInfosOwner;
+extern const char* ProcessMetadataOwner;
 
 } // namespace MachOCore
 } // namespace MMD

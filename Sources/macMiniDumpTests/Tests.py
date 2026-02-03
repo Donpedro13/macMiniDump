@@ -203,6 +203,14 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
         n_threads = process.GetNumThreads()
         if n_threads != expectation.n_threads:
             raise RuntimeError(f"Expected {expectation.n_threads} threads, but found {n_threads}")
+    
+    # Best-effort check for presence of 'process metadata' LC_NOTE
+    # If this is missing, thread IDs will be ordinals assigned by LLDB starting from 0
+    n_threads = process.GetNumThreads()
+    thread_ids = [process.GetThreadAtIndex(i).GetThreadID() for i in range(n_threads)]
+    expected_ordinals = list(range(n_threads))
+    if thread_ids == expected_ordinals:
+        raise RuntimeError(f"Thread IDs appear to be ordinals {thread_ids}, indicating 'process metadata' LC_NOTE is corrupt or missing from core file")
         
     # Check if all required images are loaded
     if expectation.required_images is not None:
