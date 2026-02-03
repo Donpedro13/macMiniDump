@@ -175,7 +175,7 @@ std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const Modu
 		std::vector<MachOCore::SegmentVMAddr> segmentVMAddrs;
 		modulePathsSize += moduleInfo.filePath.length () + sizeof '\0';
 
-		MMD_DEBUGLOG_LINE << "Image"
+		MMD_DEBUGLOG_LINE << "\nImage"
 						  << "\n"
 						  << "\t" << moduleInfo.filePath << "\n\tLoad address: " << moduleInfo.loadAddress
 						  << "\n\tSegment Count: " << moduleInfo.segments.size ();
@@ -186,7 +186,7 @@ std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const Modu
 			strncpy (newVMAddr.segname, section.segmentName, sizeof section.segmentName);
 			newVMAddr.vmaddr = section.address;
 
-			MMD_DEBUGLOG_LINE << "Segment"
+			MMD_DEBUGLOG_LINE << "\nSegment"
 							  << "\n"
 							  << "\t" << section.segmentName << "\n\tAddress: " << section.address;
 

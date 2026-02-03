@@ -10,7 +10,9 @@ namespace MMD {
 #ifndef NDEBUG
 class DebugLogLine {
 public:
-    DebugLogLine() { std::cerr << "[DEBUG] "; }
+    DebugLogLine(const char* file, int line) { 
+        std::cerr << "[DEBUG] " << file << ":" << line << " "; 
+    }
     ~DebugLogLine() { std::cerr << std::endl; }
     
     template<typename T>
@@ -34,7 +36,7 @@ public:
     #define MMD_DEBUGLOG_LINE if (true) {} else std::cerr
 #else
     #define MMD_DEBUGLOG std::cerr << "[DEBUG] "
-    #define MMD_DEBUGLOG_LINE MMD::DebugLogLine()
+    #define MMD_DEBUGLOG_LINE MMD::DebugLogLine(__FILE_NAME__, __LINE__)
 #endif
 
 #endif // MMD_LOGGING
