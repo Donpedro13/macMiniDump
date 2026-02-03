@@ -2,7 +2,6 @@ SET(macMiniDump_sources
 		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MMD/MacMiniDump.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MMD/IRandomAccessBinaryOStream.hpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MMD/FileOStream.hpp
-		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MMD/Logging.hpp
 
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MacMiniDump.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/IRandomAccessBinaryOStream.cpp
@@ -30,8 +29,7 @@ SET(macMiniDump_sources
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/StackFrame.hpp
 
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/Defer.hpp
-		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/LoggingPrivate.hpp
-		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/Logging.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/Utils/Logging.hpp
 		)
 
 ADD_LIBRARY(macMiniDump ${macMiniDump_sources})
