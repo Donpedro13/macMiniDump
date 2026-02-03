@@ -468,10 +468,9 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		const uintptr_t stackStart	  = regionInfo.vmaddr + regionInfo.vmsize;
 		size_t			lengthInBytes = stackStart - sp;
 
-		// FIXME: in case of a "self dump", the main thread's stack memory is not included, because it might have
+		// In case of a "self dump", the main thread's stack memory is not included, because it might have
 		// changed since the state was captured (above). Should we capture it nonetheless, we would get a garbled call
-		// stack. This should be handled with explicitly copying the stack memory of the current thread, as close as
-		// possible to the context capture.
+		// stack. Very similar limitation that MiniDumpWriteDump on Windows has.
 		if (threadRefs[i].Get () != thisThreadRef.Get () || pCrashContext != nullptr) {
 			const uint64_t stackSegmentStart = stackStart - lengthInBytes;
 			memoryRangesToAdd.InsertAndMergeIfNeeded (stackSegmentStart, lengthInBytes);
