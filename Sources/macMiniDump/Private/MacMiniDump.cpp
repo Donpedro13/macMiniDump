@@ -438,8 +438,6 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			// these as non-executable, and simply abort the stackwalk. In addition, we also have the nice benefit of
 			// being able to see some disassembly, even if modules are missing. Modified code bytes are a use case, too.
 
-			// FIXME: if an address appears multiple times on a call stack (maybe even on multiple threads), we add
-			// duplicate memory
 			const size_t SurroundingsRange = 256;
 			// Make sure we do not under- or overflow (e.g. nullptr, or a very large address)
 			if (ip >= SurroundingsRange && ip <= UINT64_MAX - SurroundingsRange) {
