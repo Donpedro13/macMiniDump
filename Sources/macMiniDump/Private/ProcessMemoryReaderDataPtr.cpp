@@ -18,11 +18,6 @@ const char* ProcessMemoryReaderDataPtr::Get (size_t offset, size_t size)
 
 	m_currentCopy = ReadProcessMemory (m_taskPort, m_startAddress + offset, size);
 
-	if (m_currentCopy == nullptr) {
-		std::cout << "\n\n!!! Failure reading memory from address at 0x" << std::hex << m_startAddress + offset << "\n"
-				  << std::endl;
-	}
-
 	return m_currentCopy.get ();
 }
 

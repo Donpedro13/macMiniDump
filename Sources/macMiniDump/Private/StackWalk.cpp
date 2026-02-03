@@ -2,11 +2,11 @@
 
 #include <mach-o/compact_unwind_encoding.h>
 #include <mach-o/loader.h>
-#include <syslog.h>
 
 #include <cassert>
 #include <cinttypes>
 
+#include "Logging.hpp"
 #include "ReadProcessMemory.hpp"
 #include "StackFrame.hpp"
 
@@ -55,7 +55,7 @@ bool IsPreviousInstructionBLKind (mach_port_t taskPort, uintptr_t instructionPoi
 	constexpr size_t instructionSize = 4;
 	uint32_t		 instruction;
 	if (!ReadProcessMemoryInto (taskPort, instructionPointer - instructionSize, &instruction)) {
-		syslog (LOG_WARNING, "Failed to read memory at %" PRIuPTR, instructionPointer - instructionSize);
+		MMD_DEBUGLOG_LINE << "Failed to read memory at " << instructionPointer - instructionSize;
 
 		return false;
 	}
@@ -91,7 +91,7 @@ bool IsPreviousInstructionSVC ([[maybe_unused]] mach_port_t		  taskPort,
 	constexpr size_t instructionSize = 4;
 	uint32_t		 instruction;
 	if (!ReadProcessMemoryInto (taskPort, instructionPointer - instructionSize, &instruction)) {
-		syslog (LOG_WARNING, "Failed to read memory at %" PRIuPTR, instructionPointer - instructionSize);
+		MMD_DEBUGLOG_LINE << "Failed to read memory at " << instructionPointer - instructionSize;
 
 		return false;
 	}
@@ -145,9 +145,9 @@ std::vector<uint64_t> WalkStack (mach_port_t							  taskPort,
 	if (ExceptionMightBeControlTransferRelated (exc)) {
 		if (MemoryRegionInfo regionInfo; !memoryRegions.GetRegionInfoForAddress (instructionPointer, &regionInfo) ||
 										 !(regionInfo.prot & MemProtExecute)) {
-			syslog (LOG_WARNING,
-					"Instruction pointer points to not mapped or non-executable memory: %" PRIuPTR,
-					instructionPointer);
+			MMD_DEBUGLOG_LINE << "Instruction pointer points to not mapped or non-executable memory: "
+							  << instructionPointer;
+
 			topPCNoStackFrame = IsPreviousInstructionBLKind (taskPort, gpr.gpr.__lr);
 		}
 	}

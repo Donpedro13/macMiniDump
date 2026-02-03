@@ -6,18 +6,18 @@
 #include <mach/vm_region.h>
 
 #include <sys/sysctl.h>
-#include <syslog.h>
 
 #include <CoreServices/CoreServices.h>
 
 #include <cinttypes>
-#include <iostream>
 #include <map>
 #include <memory>
 #include <vector>
 
-#include "Defer.hpp"
 #include "MMD/FileOStream.hpp"
+
+#include "Defer.hpp"
+#include "Logging.hpp"
 #include "MachOCoreDumpBuilder.hpp"
 #include "MachOCoreInternal.hpp"
 #include "MachPortSendRightRef.hpp"
@@ -175,10 +175,10 @@ std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const Modu
 		std::vector<MachOCore::SegmentVMAddr> segmentVMAddrs;
 		modulePathsSize += moduleInfo.filePath.length () + sizeof '\0';
 
-		std::cout << "Image"
-				  << "\n"
-				  << "\t" << moduleInfo.filePath << "\n\tLoad address: " << moduleInfo.loadAddress
-				  << "\n\tSegment Count: " << moduleInfo.segments.size () << std::endl;
+		MMD_DEBUGLOG_LINE << "Image"
+						  << "\n"
+						  << "\t" << moduleInfo.filePath << "\n\tLoad address: " << moduleInfo.loadAddress
+						  << "\n\tSegment Count: " << moduleInfo.segments.size ();
 
 		const ModuleList::Segments& segments = moduleInfo.segments;
 		for (const auto& section : segments) {
@@ -186,9 +186,9 @@ std::vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const Modu
 			strncpy (newVMAddr.segname, section.segmentName, sizeof section.segmentName);
 			newVMAddr.vmaddr = section.address;
 
-			std::cout << "Segment"
-					  << "\n"
-					  << "\t" << section.segmentName << "\n\tAddress: " << section.address << std::endl;
+			MMD_DEBUGLOG_LINE << "Segment"
+							  << "\n"
+							  << "\t" << section.segmentName << "\n\tAddress: " << section.address;
 
 			segmentVMAddrs.push_back (newVMAddr);
 			++nSegments;
@@ -323,13 +323,13 @@ bool SuspendAllThreadsExceptCurrentOne (mach_port_t taskPort, std::vector<MachPo
 			suspendedThreads.push_back (std::move (threadRef));
 		} else {
 			// Threads might start and end after calling task_threads, so we handle failures here gracefully
-			syslog (LOG_WARNING, "Failed to suspend thread #%u", i);
+			MMD_DEBUGLOG_LINE << "Failed to suspend thread #" << i << " port " << threadRef.Get ();
 		}
 	}
 
 	vm_deallocate (mach_task_self (), (vm_address_t) threads, nThreads * sizeof (thread_act_t));
 
-	syslog (LOG_NOTICE, "Suspended %zu threads for self-dump", suspendedThreads.size ());
+	MMD_DEBUGLOG_LINE << "Suspended " << suspendedThreads.size () << " threads for self-dump";
 
 	*pSuspendedThreadsOut = std::move (suspendedThreads);
 
@@ -340,7 +340,7 @@ void ResumeThreads (const std::vector<MachPortSendRightRef>& threads)
 {
 	for (const MachPortSendRightRef& threadRef : threads) {
 		if (thread_resume (threadRef.Get ()) != KERN_SUCCESS)
-			syslog (LOG_WARNING, "Failed to resume thread port %u", threadRef.Get ());
+			MMD_DEBUGLOG_LINE << "Failed to resume thread port " << threadRef.Get ();
 	}
 }
 
@@ -361,7 +361,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 	for (unsigned int i = 0; i < nThreads; ++i)
 		threadRefs.push_back (MachPortSendRightRef::Wrap (threads[i]));
 
-	syslog (LOG_NOTICE, "Enumerating %d threads...", nThreads);
+	MMD_DEBUGLOG_LINE << "Enumerating " << nThreads << " threads...";
 
 	MemoryRegionList memoryRegions (taskPort);
 
@@ -396,16 +396,16 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 						 &identifier_info_count) == KERN_SUCCESS) {
 			tid = identifier_info.thread_id;
 		} else {
-			syslog (LOG_NOTICE, "Unable to get tid for thread #%u!", i);
+			MMD_DEBUGLOG_LINE << "Unable to get tid for thread #" << i << "!";
 		}
 
 		if (pCrashContext != nullptr && tid == pCrashContext->crashedTID) {
-			syslog (LOG_NOTICE, "Found crashing thread (tid %" PRIu64 " )", tid);
+			MMD_DEBUGLOG_LINE << "Found crashing thread (tid " << tid << " )";
 
 			memcpy (&ts, &pCrashContext->mcontext.__ss, sizeof ts);
 			memcpy (&es, &pCrashContext->mcontext.__es, sizeof es);
 		} else {
-			syslog (LOG_NOTICE, "Adding thread (tid %" PRIu64 " )", tid);
+			MMD_DEBUGLOG_LINE << "Adding thread (tid " << tid << " )";
 
 			if (thread_get_state (threadRefs[i].Get (), gprFlavor, (thread_state_t) &ts, &gprCount) != KERN_SUCCESS)
 				continue;
@@ -430,7 +430,6 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 		std::vector<uint64_t> callStack = WalkStack (taskPort, memoryRegions, *pModules, gpr, exc);
 
-		syslog (LOG_WARNING, "Thread #%d call stack", i);
 		for (const auto ip : callStack) {
 			// Add some memory before and after every instruction pointer on the call stack. This is needed for
 			// stack walking to work properly when opening the core, as LLDB checks the protection of the memory
@@ -438,8 +437,6 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			// opening the core file (frequent case: system libraries). If the memory is not included, it will assume
 			// these as non-executable, and simply abort the stackwalk. In addition, we also have the nice benefit of
 			// being able to see some disassembly, even if modules are missing. Modified code bytes are a use case, too.
-
-			syslog (LOG_WARNING, "\t0x%llx", ip);
 
 			// FIXME: if an address appears multiple times on a call stack (maybe even on multiple threads), we add
 			// duplicate memory
@@ -450,7 +447,7 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 				const size_t   length = (2 * SurroundingsRange) + 1;
 				memoryRangesToAdd.InsertAndMergeIfNeeded (start, length);
 			} else {
-				syslog (LOG_WARNING, "Skipping address %llu on thread #%d because it is out of range!", ip, i);
+				MMD_DEBUGLOG_LINE << "Skipping address " << ip << " on thread #" << i << " because it is out of range!";
 			}
 
 			// Mark modules as executing if an address corresponding to a module is on a call stack. According to lldb's
@@ -462,13 +459,13 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		uintptr_t		 sp = pointers.StackPointer ().AsUIntPtr ();
 		MemoryRegionInfo regionInfo;
 		if (!memoryRegions.GetRegionInfoForAddress (sp, &regionInfo)) {
-			syslog (LOG_WARNING, "Stack pointer of thread #%d points to invalid memory: %" PRIuPTR, i, sp);
+			MMD_DEBUGLOG_LINE << "Stack pointer of thread #" << i << " points to invalid memory: " << sp;
 
 			continue;
 		}
 
 		if (regionInfo.type != MemoryRegionType::Stack)
-			syslog (LOG_WARNING, "Stack pointer of thread #%d points to non-stack memory: %" PRIuPTR, i, sp);
+			MMD_DEBUGLOG_LINE << "Stack pointer of thread #" << i << " points to non-stack memory: " << sp;
 
 		const uintptr_t stackStart	  = regionInfo.vmaddr + regionInfo.vmsize;
 		size_t			lengthInBytes = stackStart - sp;
@@ -486,7 +483,8 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 	// Add all merged memory ranges to core
 	memoryRangesToAdd.ForEach ([&] (uint64_t start, size_t length) {
 		if (!AddSegmentCommandFromProcessMemory (taskPort, pCoreBuilder, start, length)) {
-			syslog (LOG_WARNING, "Failed to add memory segment at 0x%llx (length %zu)", start, length);
+			MMD_DEBUGLOG_LINE << "Failed to add memory segment at 0x" << std::hex << start << " (length " << std::dec
+							  << length << ")";
 		}
 	});
 

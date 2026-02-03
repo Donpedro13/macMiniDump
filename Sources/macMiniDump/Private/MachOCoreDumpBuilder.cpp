@@ -4,6 +4,8 @@
 #include <cmath>
 #include <iostream>
 
+#include "Logging.hpp"
+
 namespace MMD {
 namespace {
 
@@ -102,10 +104,10 @@ bool MachOCoreDumpBuilder::Build (IRandomAccessBinaryOStream* pOStream)
 			const char* data = sc.second->GetDataPtr ()->Get (offset, chunkSize);
 
 			if (data == nullptr) {
-				std::cout << "Warning! data is null, aborting saving this segment." << std::endl;
+				MMD_DEBUGLOG_LINE << "Failed to read data for segment "
+								  << std::string (sc.first.segname, sizeof (sc.first.segname)) << " at address 0x"
+								  << std::hex << sc.first.vmaddr << std::dec;
 				break;
-			} else {
-				std::cout << "+" << std::flush;
 			}
 
 			if (!WriteToOStream (data, chunkSize, pOStream))
