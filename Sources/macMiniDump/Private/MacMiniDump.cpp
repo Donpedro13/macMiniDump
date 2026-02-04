@@ -534,18 +534,7 @@ bool AddNotesToCore (MachOCoreDumpBuilder* pCoreBuilder)
 	return true;
 }
 
-} // namespace
-
-extern "C" int MiniDumpWriteDump (mach_port_t taskPort, int fd, struct MMDCrashContext* pCrashContext)
-{
-	MMD::FileOStream fos (fd);
-
-	return MiniDumpWriteDump (taskPort, &fos, pCrashContext);
-}
-
-bool MiniDumpWriteDump (mach_port_t					taskPort,
-						IRandomAccessBinaryOStream* pOStream,
-						CrashContext*				pCrashContext /*= nullptr*/)
+bool MiniDumpWriteDumpImpl (mach_port_t taskPort, IRandomAccessBinaryOStream* pOStream, CrashContext* pCrashContext)
 {
 	assert (pOStream != nullptr);
 
@@ -601,6 +590,26 @@ bool MiniDumpWriteDump (mach_port_t					taskPort,
 		return false;
 
 	return true;
+}
+
+} // namespace
+
+extern "C" int MiniDumpWriteDump (mach_port_t taskPort, int fd, struct MMDCrashContext* pCrashContext)
+{
+	MMD::FileOStream fos (fd);
+
+	return MiniDumpWriteDump (taskPort, &fos, pCrashContext);
+}
+
+bool MiniDumpWriteDump (mach_port_t					taskPort,
+						IRandomAccessBinaryOStream* pOStream,
+						CrashContext*				pCrashContext /*= nullptr*/)
+{
+	try {
+		return MiniDumpWriteDumpImpl (taskPort, pOStream, pCrashContext);
+	} catch (const std::bad_alloc&) {
+		return false;
+	}
 }
 
 } // namespace MMD
