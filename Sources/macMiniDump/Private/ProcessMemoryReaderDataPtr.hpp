@@ -9,8 +9,6 @@
 #include <mach/mach_vm.h>
 #include <mach/vm_map.h>
 
-#include <iostream>
-
 namespace MMD {
 
 class ProcessMemoryReaderDataPtr : public IDataPtr {
@@ -25,7 +23,7 @@ private:
 	vm_address_t m_startAddress;
 	vm_size_t	 m_maxSize;
 
-	std::unique_ptr<char[]> m_currentCopy;
+	UniquePtr<char[]> m_currentCopy;
 };
 
 } // namespace MMD

@@ -9,9 +9,9 @@ FileOStream::FileOStream (FILE* pFile): IRandomAccessBinaryOStream (), m_fd (fil
 
 FileOStream::FileOStream (int fd): m_fd (fd) {}
 
-FileOStream::FileOStream (const std::string filePath)
+FileOStream::FileOStream (const char* filePath)
 {
-	m_fd = open (filePath.c_str (), O_WRONLY);
+	m_fd = open (filePath, O_WRONLY);
 }
 
 bool FileOStream::Write (const void* pData, size_t size)

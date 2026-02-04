@@ -7,7 +7,8 @@
 #include <uuid/uuid.h>
 
 #include <cstdint>
-#include <memory>
+
+#include "ZoneAllocator.hpp"
 
 namespace MMD {
 namespace MachOCore {
@@ -101,7 +102,7 @@ public:
 
 class Pointer final {
 private:
-	std::unique_ptr<uint8_t[]> ptr;
+	UniquePtr<uint8_t[]> ptr;
 
 public:
 	explicit Pointer (size_t widthInBytes, void* ptr);

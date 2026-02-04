@@ -5,8 +5,8 @@
 namespace MMD {
 namespace MachOCore {
 
-const char* AddrableBitsOwner    = "addrable bits";
-const char* AllImageInfosOwner   = "all image infos";
+const char* AddrableBitsOwner	 = "addrable bits";
+const char* AllImageInfosOwner	 = "all image infos";
 const char* ProcessMetadataOwner = "process metadata";
 
 ThreadInfo::ThreadInfo (thread_act_t threads_i, bool suspendWhileInspecting):
@@ -103,12 +103,14 @@ size_t GPRPointers::AddressWidthInBytes () const
 	#error Only x86_64 and ARM architectures are supported.
 #endif
 
-Pointer::Pointer (size_t widthInBytes, void* ptrIn): ptr (new uint8_t[widthInBytes]), WidthInBytes (widthInBytes)
+Pointer::Pointer (size_t widthInBytes, void* ptrIn):
+	ptr (MakeUniqueArray<uint8_t> (widthInBytes)),
+	WidthInBytes (widthInBytes)
 {
 	memcpy (ptr.get (), ptrIn, sizeof (uint8_t) * widthInBytes);
 }
 
-Pointer::Pointer (uintptr_t ptrIn): ptr (new uint8_t[8]), WidthInBytes (8)
+Pointer::Pointer (uintptr_t ptrIn): ptr (MakeUniqueArray<uint8_t> (8)), WidthInBytes (8)
 {
 	memcpy (ptr.get (), &ptrIn, sizeof (uint8_t) * 8);
 }

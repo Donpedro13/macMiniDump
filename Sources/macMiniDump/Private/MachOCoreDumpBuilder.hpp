@@ -5,12 +5,11 @@
 
 #include <mach-o/loader.h>
 
-#include <memory>
 #include <utility>
-#include <vector>
 
 #include "DataAccess.hpp"
 #include "MMD/IRandomAccessBinaryOStream.hpp"
+#include "ZoneAllocator.hpp"
 
 namespace MMD {
 
@@ -39,8 +38,8 @@ public:
 
 private:
 	template<typename LC>
-	using LoadCommandsWithLazyData = std::vector<std::pair<LC, std::unique_ptr<IDataProvider>>>;
-	using ThreadCommands		   = std::vector<std::unique_ptr<thread_command>>;
+	using LoadCommandsWithLazyData = Vector<std::pair<LC, std::unique_ptr<IDataProvider>>>;
+	using ThreadCommands		   = Vector<UniquePtr<thread_command>>;
 
 	template<typename T>
 	bool WriteToOStream (const T& data, IRandomAccessBinaryOStream* pOStream);
@@ -55,7 +54,7 @@ private:
 	LoadCommandsWithLazyData<segment_command_64> m_segment_cmds;
 
 #ifdef _DEBUG
-	std::vector<std::pair<size_t, size_t>> m_writtenRanges;
+	Vector<std::pair<size_t, size_t>> m_writtenRanges;
 #endif
 };
 

@@ -14,9 +14,9 @@ class FileOStream : public IRandomAccessBinaryOStream {
 public:
 	// Constructors
 	FileOStream () = delete;
-	FileOStream (FILE* pFile);						   // File must be opened for writing
-	explicit FileOStream (int fd);					   // fd must be opened for writing
-	explicit FileOStream (const std::string filePath); // The file at this path must exist
+	FileOStream (FILE* pFile);					 // File must be opened for writing
+	explicit FileOStream (int fd);				 // fd must be opened for writing
+	explicit FileOStream (const char* filePath); // The file at this path must exist
 
 	// Inherited from IRandomAccessBinaryOStream
 	virtual bool Write (const void* pData, size_t size) override;

@@ -5,8 +5,7 @@
 
 #include <mach/port.h>
 
-#include <memory>
-#include <string>
+#include "ZoneAllocator.hpp"
 
 namespace MMD {
 
@@ -21,8 +20,8 @@ bool ReadProcessMemoryInto (mach_port_t taskPort, uintptr_t address, T* pOut)
 }
 
 // Allocates and returns a buffer containing the read memory. Returns nullptr on failure.
-std::unique_ptr<char[]> ReadProcessMemory (mach_port_t taskPort, uintptr_t address, size_t size);
-bool ReadProcessMemoryString (mach_port_t taskPort, uintptr_t address, size_t maxSize, std::string* pStringOut);
+UniquePtr<char[]> ReadProcessMemory (mach_port_t taskPort, uintptr_t address, size_t size);
+bool			  ReadProcessMemoryString (mach_port_t taskPort, uintptr_t address, size_t maxSize, String* pStringOut);
 
 } // namespace MMD
 

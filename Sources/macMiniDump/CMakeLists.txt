@@ -4,6 +4,8 @@ SET(macMiniDump_sources
 		${CMAKE_CURRENT_SOURCE_DIR}/Includes/MMD/FileOStream.hpp
 
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MacMiniDump.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/ZoneAllocator.hpp
+		${CMAKE_CURRENT_SOURCE_DIR}/Private/ZoneAllocator.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/IRandomAccessBinaryOStream.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/FileOStream.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/Private/MachOCoreDumpBuilder.hpp

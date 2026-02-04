@@ -106,13 +106,13 @@ bool IsPreviousInstructionSVC ([[maybe_unused]] mach_port_t		  taskPort,
 
 } // namespace
 
-std::vector<uint64_t> WalkStack (mach_port_t							  taskPort,
-								 [[maybe_unused]] const MemoryRegionList& memoryRegions,
-								 [[maybe_unused]] const ModuleList&		  moduleList,
-								 const MachOCore::GPR&					  gpr,
-								 [[maybe_unused]] const MachOCore::EXC&	  exc)
+Vector<uint64_t> WalkStack (mach_port_t								 taskPort,
+							[[maybe_unused]] const MemoryRegionList& memoryRegions,
+							[[maybe_unused]] const ModuleList&		 moduleList,
+							const MachOCore::GPR&					 gpr,
+							[[maybe_unused]] const MachOCore::EXC&	 exc)
 {
-	std::vector<uint64_t> result;
+	Vector<uint64_t> result;
 
 	const MachOCore::GPRPointers pointers (gpr);
 	const uintptr_t				 basePointer		= pointers.BasePointer ().AsUIntPtr ();

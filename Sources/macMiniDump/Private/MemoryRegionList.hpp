@@ -6,8 +6,8 @@
 #include <mach/vm_prot.h>
 
 #include <cstdint>
-#include <map>
-#include <vector>
+
+#include "ZoneAllocator.hpp"
 
 namespace MMD {
 
@@ -33,7 +33,7 @@ struct MemoryRegionInfo {
 
 class MemoryRegionList {
 public:
-	using MemoryRegions = std::map<uint64_t, MemoryRegionInfo>;
+	using MemoryRegions = Map<uint64_t, MemoryRegionInfo>;
 
 	explicit MemoryRegionList (mach_port_t taskPort);
 

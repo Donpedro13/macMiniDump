@@ -1,6 +1,8 @@
 #include <mach-o/dyld.h>
 #include <mach/mach.h>
+#include <malloc/malloc.h>
 
+#include <cstring>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <spawn.h>
@@ -176,9 +178,49 @@ bool CreateCoreFileImpl (mach_port_t task, const std::string& corePath, MMDCrash
 	return MiniDumpWriteDump (task, &fos, pCrashContext);
 }
 
-bool CreateCoreFile (const std::string& corePath)
+NOINLINE bool CreateCoreFile (const std::string& corePath)
 {
 	return CreateCoreFileImpl (mach_task_self (), corePath);
+}
+
+NOINLINE bool CorruptHeapThenCreateCoreFile (const std::string& corePath)
+{
+	[[maybe_unused]] volatile int local = 20250425;
+
+	// Intentionally corrupt the default malloc zone in a way that not a single memory allocation will succeed
+	vm_address_t* zones = nullptr;
+	unsigned int  zoneCount = 0;
+	
+	// Using malloc_default_zone is not sufficient, as the default zone might be a "fake" zone that forwards to the real
+	kern_return_t kr = malloc_get_all_zones (mach_task_self (), nullptr, &zones, &zoneCount);
+	if (kr != KERN_SUCCESS || zoneCount == 0)
+		return false;
+
+	// Find the real default zone by matching its name
+	malloc_zone_t* realDefaultZone = nullptr;
+	for (unsigned int i = 0; i < zoneCount; ++i) {
+		malloc_zone_t* zone = reinterpret_cast<malloc_zone_t*> (zones[i]);
+		const char* zoneName = malloc_get_zone_name (zone);
+		if (zoneName != nullptr && strstr (zoneName, "DefaultMallocZone") != nullptr) {
+			realDefaultZone = zone;
+			break;
+		}
+	}
+
+	// Fallback to first zone if we couldn't find the default by name
+	if (realDefaultZone == nullptr)
+		realDefaultZone = reinterpret_cast<malloc_zone_t*> (zones[0]);
+
+	// Make the structure writable (if it isn't already...)
+	vm_protect (mach_task_self (), (vm_address_t) realDefaultZone, 4096, 0,
+				VM_PROT_READ | VM_PROT_WRITE);
+
+	// Overwrite the entire zone with garbage
+	memset (realDefaultZone, 0xDE, sizeof (malloc_zone_t));
+
+	// After core file creation is done, we quit right away; since the heap is corrupted, we don't want any global
+	//   destructors etc. to run
+	_exit (CreateCoreFileImpl (mach_task_self (), corePath) ? 0 : 1);
 }
 
 void SignalHandler (int /*sig*/, siginfo_t* /*sigInfo*/, void* context)
@@ -344,6 +386,7 @@ void SetupMiscThreads ()
 
 std::map<std::string, std::function<bool (const std::string&)>> g_operations = {
 	{ "CreateCore", CreateCoreFile },
+	{ "CorruptHeapThenCreateCoreFile", CorruptHeapThenCreateCoreFile },
 	{ "CreateCoreFromC", CreateCoreFromC },
 	{ "CrashInvalidPtrWrite", CrashInvalidPtrWrite },
 	{ "CrashNullPtrCall", CrashNullPtrCall },

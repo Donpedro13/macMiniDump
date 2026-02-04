@@ -4,11 +4,12 @@
 #pragma once
 
 #include <cstddef>
-#include <memory>
+
+#include "ZoneAllocator.hpp"
 
 namespace MMD {
 
-class IDataPtr {
+class IDataPtr : public ZoneAllocated {
 public:
 	virtual const char* Get (size_t offset, size_t size) = 0;
 	virtual const char* Get ()							 = 0;
@@ -35,10 +36,10 @@ public:
 	virtual const char* Get () override { return m_pData.get (); }
 
 private:
-	std::unique_ptr<char[]> m_pData;
+	UniquePtr<char[]> m_pData;
 };
 
-class IDataProvider {
+class IDataProvider : public ZoneAllocated {
 public:
 	virtual size_t GetSize () = 0;
 	// Returns an IDataPtr object, or nullptr if an error occurred

@@ -51,9 +51,9 @@ bool ReadProcessMemoryInto (mach_port_t taskPort, uintptr_t address, void* buffe
 		   KERN_SUCCESS;
 }
 
-std::unique_ptr<char[]> ReadProcessMemory (mach_port_t taskPort, uintptr_t address, size_t size)
+UniquePtr<char[]> ReadProcessMemory (mach_port_t taskPort, uintptr_t address, size_t size)
 {
-	std::unique_ptr<char[]> result (new char[size]);
+	UniquePtr<char[]> result = MakeUniqueArray<char> (size);
 
 	if (!ReadProcessMemoryInto (taskPort, address, result.get (), size))
 		return nullptr;
@@ -61,7 +61,7 @@ std::unique_ptr<char[]> ReadProcessMemory (mach_port_t taskPort, uintptr_t addre
 	return result;
 }
 
-bool ReadProcessMemoryString (mach_port_t taskPort, uintptr_t address, size_t maxSize, std::string* pStringOut)
+bool ReadProcessMemoryString (mach_port_t taskPort, uintptr_t address, size_t maxSize, String* pStringOut)
 {
 	vm_size_t sizeToRead;
 	if (!GetMemoryRegionEndDistance (taskPort, address, &sizeToRead))
@@ -70,7 +70,7 @@ bool ReadProcessMemoryString (mach_port_t taskPort, uintptr_t address, size_t ma
 	if (sizeToRead > maxSize)
 		sizeToRead = maxSize;
 
-	std::unique_ptr<char[]> pMem = ReadProcessMemory (taskPort, address, sizeToRead);
+	UniquePtr<char[]> pMem = ReadProcessMemory (taskPort, address, sizeToRead);
 	if (pMem != nullptr) {
 		const char* pCharacters = pMem.get ();
 		for (size_t i = 0; i < sizeToRead; ++i) {

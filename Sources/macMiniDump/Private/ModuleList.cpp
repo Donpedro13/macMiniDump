@@ -13,12 +13,12 @@
 namespace MMD {
 namespace {
 
-std::vector<ModuleList::SegmentInfo> GetSegmentsOfModule (const char* pModuleFirstByte)
+Vector<ModuleList::SegmentInfo> GetSegmentsOfModule (const char* pModuleFirstByte)
 {
 	const mach_header_64* pHeader = reinterpret_cast<const mach_header_64*> (pModuleFirstByte);
 
-	std::vector<ModuleList::SegmentInfo> result;
-	const char*							 pCmdRaw = pModuleFirstByte + sizeof (mach_header_64);
+	Vector<ModuleList::SegmentInfo> result;
+	const char*						pCmdRaw = pModuleFirstByte + sizeof (mach_header_64);
 	for (size_t i = 0; i < pHeader->ncmds; ++i) {
 		const load_command* pCmd = reinterpret_cast<const load_command*> (pCmdRaw);
 		if (pCmd->cmd == LC_SEGMENT_64) {
@@ -80,13 +80,13 @@ bool CreateModuleInfo (mach_port_t			   taskPort,
 	if (!ReadProcessMemoryInto (taskPort, loadAddress, &header))
 		return false;
 
-	std::unique_ptr<char[]> pRawBytes =
+	UniquePtr<char[]> pRawBytes =
 		ReadProcessMemory (taskPort, loadAddress, sizeof (mach_header_64) + header.sizeofcmds);
 	if (pRawBytes == nullptr)
 		return false;
 
-	std::vector<ModuleList::SegmentInfo> segments = GetSegmentsOfModule (pRawBytes.get ());
-	ptrdiff_t							 slide	  = 0;
+	Vector<ModuleList::SegmentInfo> segments = GetSegmentsOfModule (pRawBytes.get ());
+	ptrdiff_t						slide	 = 0;
 	for (const auto& si : segments) {
 		if (strcmp (si.segmentName, "__TEXT") == 0) {
 			slide = loadAddress - si.address; // We calculate the slide based on the actual load address and "preferred"
@@ -122,7 +122,7 @@ bool CreateModuleInfo (mach_port_t			   taskPort,
 					   uintptr_t			   imageFilePathAddress,
 					   ModuleList::ModuleInfo* pModuleInfoOut)
 {
-	std::string imagePath;
+	String imagePath;
 	if (!ReadProcessMemoryString (taskPort, (uintptr_t) imageFilePathAddress, 4096, &imagePath))
 		return false;
 
@@ -133,18 +133,18 @@ bool CreateModuleInfo (mach_port_t			   taskPort,
 
 ModuleList::ModuleInfo::ModuleInfo () = default;
 
-ModuleList::ModuleInfo::ModuleInfo (uintptr_t				 loadAddress,
-									const uuid_t*			 pUUID,
-									const std::string&		 filePath,
-									std::vector<SegmentInfo> segments,
-									bool					 executing,
-									std::unique_ptr<char[]>	 headerAndLoadCommandBytes):
+ModuleList::ModuleInfo::ModuleInfo (uintptr_t			loadAddress,
+									const uuid_t*		pUUID,
+									const String&		filePath,
+									Vector<SegmentInfo> segments,
+									bool				executing,
+									UniquePtr<char[]>	headerAndLoadCommandBytes):
 	loadAddress (loadAddress),
 	uuid (),
 	filePath (filePath),
 	segments (segments),
 	executing (executing),
-	headerAndLoadCommandBytes (headerAndLoadCommandBytes.release ())
+	headerAndLoadCommandBytes (std::move (headerAndLoadCommandBytes))
 {
 	memcpy (&uuid, pUUID, sizeof uuid);
 }
@@ -163,14 +163,14 @@ ModuleList::ModuleList (mach_port_t taskPort)
 	if (!ReadProcessMemoryInto (taskPort, dyldInfoAddress, &imageInfo))
 		return;
 
-	std::unique_ptr<char[]> dyldInfosBytes = ReadProcessMemory (taskPort,
-																(uintptr_t) imageInfo.infoArray,
-																imageInfo.infoArrayCount * sizeof (dyld_image_info));
+	UniquePtr<char[]> dyldInfosBytes = ReadProcessMemory (taskPort,
+														  (uintptr_t) imageInfo.infoArray,
+														  imageInfo.infoArrayCount * sizeof (dyld_image_info));
 	if (dyldInfosBytes == nullptr)
 		return;
 
 	// Quirk: the dyld image itself is not listed in the image array, so we have to add it manually
-	std::string dyldImagePath = "/usr/lib/dyld";
+	String dyldImagePath ("/usr/lib/dyld");
 	// Try to read dyld path; if not available or fails, we go with a default value
 	if (imageInfo.version >= 15)
 		ReadProcessMemoryString (taskPort, (uintptr_t) imageInfo.dyldPath, 4096, &dyldImagePath);

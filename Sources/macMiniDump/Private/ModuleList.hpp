@@ -6,9 +6,7 @@
 #include <mach/port.h>
 #include <uuid/uuid.h>
 
-#include <map>
-#include <string>
-#include <vector>
+#include "ZoneAllocator.hpp"
 
 namespace MMD {
 
@@ -20,27 +18,27 @@ public:
 		uint64_t size;
 	};
 
-	using Segments = std::vector<SegmentInfo>;
+	using Segments = Vector<SegmentInfo>;
 
 	struct ModuleInfo {
-		uintptr_t	loadAddress;
-		uuid_t		uuid;
-		std::string filePath;
-		Segments	segments;
-		bool		executing;
+		uintptr_t loadAddress;
+		uuid_t	  uuid;
+		String	  filePath;
+		Segments  segments;
+		bool	  executing;
 
-		std::unique_ptr<char> headerAndLoadCommandBytes;
+		UniquePtr<char[]> headerAndLoadCommandBytes;
 
 		ModuleInfo ();
-		ModuleInfo (uintptr_t				 loadAddress,
-					const uuid_t*			 pUUID,
-					const std::string&		 filePath,
-					std::vector<SegmentInfo> segments,
-					bool					 executing,
-					std::unique_ptr<char[]>	 headerAndLoadCommandBytes);
+		ModuleInfo (uintptr_t			loadAddress,
+					const uuid_t*		pUUID,
+					const String&		filePath,
+					Vector<SegmentInfo> segments,
+					bool				executing,
+					UniquePtr<char[]>	headerAndLoadCommandBytes);
 	};
 
-	using ModuleInfos = std::map<uint64_t, ModuleInfo>;
+	using ModuleInfos = Map<uint64_t, ModuleInfo>;
 
 	explicit ModuleList (mach_port_t taskPort);
 
