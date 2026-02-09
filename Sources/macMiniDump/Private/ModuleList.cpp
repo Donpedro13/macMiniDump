@@ -29,9 +29,9 @@ Vector<ModuleList::SegmentInfo> GetSegmentsOfModule (const char* pModuleFirstByt
 			newInfo.size	= pSegCmd->vmsize;
 
 			result.push_back (newInfo);
-
-			pCmdRaw += pCmd->cmdsize;
 		}
+
+		pCmdRaw += pCmd->cmdsize;
 	}
 
 	return result;
