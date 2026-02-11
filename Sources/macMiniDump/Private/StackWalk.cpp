@@ -118,6 +118,14 @@ Vector<uint64_t> WalkStack (mach_port_t								 taskPort,
 	const uintptr_t				 basePointer		= pointers.BasePointer ().AsUIntPtr ();
 	const uintptr_t				 instructionPointer = pointers.InstructionPointer ().AsUIntPtr ();
 
+	// Seems to happen in weird scenarios (LLDB is also incapable of stackwalks for these threads); maybe when a thread 
+	//   is being launched/stopped?
+	if (basePointer == 0) {
+		MMD_DEBUGLOG_LINE << "Skipping stack walk for thread: the base pointer is 0!";
+
+		return result;
+	}
+
 	auto addIPToResult = [&result] (uintptr_t ip) {
 #ifdef __arm64__
 		StripPACFromPointer (&ip);
