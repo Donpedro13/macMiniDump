@@ -443,8 +443,9 @@ bool SuspendAllThreadsExceptCurrentOne (mach_port_t taskPort, Vector<MachPortSen
 void ResumeThreads (const Vector<MachPortSendRightRef>& threads)
 {
 	for (const MachPortSendRightRef& threadRef : threads) {
-		if (thread_resume (threadRef.Get ()) != KERN_SUCCESS)
+		if (thread_resume (threadRef.Get ()) != KERN_SUCCESS) {
 			MMD_DEBUGLOG_LINE << "Failed to resume thread port " << threadRef.Get ();
+		}
 	}
 }
 
@@ -570,8 +571,9 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			continue;
 		}
 
-		if (regionInfo.type != MemoryRegionType::Stack)
+		if (regionInfo.type != MemoryRegionType::Stack) {
 			MMD_DEBUGLOG_LINE << "Stack pointer of thread #" << i << " points to non-stack memory: " << sp;
+		}
 
 		const uintptr_t stackStart	  = regionInfo.vmaddr + regionInfo.vmsize;
 		size_t			lengthInBytes = stackStart - sp;
