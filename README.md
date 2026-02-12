@@ -8,9 +8,9 @@ Include the main header file, and call `MiniDumpWriteDump`. See [CoreDump.cpp](S
 
 ### Crashes
 
-One of the most frequent use-case of memory dumps is post-mortem analysis of crashes. This is supported, but additional data must be provided for the library:
+One of the most frequent use cases of memory dumps is post-mortem analysis of crashes. This is supported, but additional data must be provided to the library:
 * register state of the crash
-* the (pthread) id of the crashing thread
+* the (pthread) ID of the crashing thread
 
 All of this can be achieved with a signal handler, see [CoreDumpOfACrash.cpp](Sources/examples/CoreDumpOfACrash.cpp).
 
@@ -20,17 +20,22 @@ Note that a crashing process might have corrupt state, so the success of core fi
 
 This library supports the creation of core files of other processes. However, due to strict security rules, this (`task_for_pid`) is generally blocked by macOS.
 
-To make this work, your target process can voluntarily transfer the necessary (so-called) mach port of its own task using some IPC machinery. See [this source file](https://github.com/chromium/crashpad/blob/main/util/mach/child_port_handshake.cc) from the crashpad project, and   [`NSMachBootstrapServer`](https://developer.apple.com/documentation/foundation/nsmachbootstrapserver) as a reference.
+To make this work, your target process can voluntarily transfer the necessary (so-called) Mach port of its own task using some IPC machinery. See [this source file](https://github.com/chromium/crashpad/blob/main/util/mach/child_port_handshake.cc) from the crashpad project, and [`NSMachBootstrapServer`](https://developer.apple.com/documentation/foundation/nsmachbootstrapserver) as a reference.
+
+## Debugging core files
+
+Use LLDB (or a tool using LLDB, like VS Code) to open core files: `lldb /path/to/executable -c /path/to/corefile`. Note that the executable must be the exact same version as the one used to create the core file, otherwise you won't get correct symbols. Same goes for shared libraries (LLDB's `target.exec-search-paths` setting might be useful here).
 
 ## Building
 
-The project is self-contained: no special environment, no 3rd party dependencies. The only requirements for building is a working compiler and CMake.
+The project is self-contained: no special environment, no third-party dependencies needed. The only requirements for building are a working compiler and CMake.
 
 ## Limitations
 
+* LLDB versions older than 14 have issues with core files created by this library
 * Currently, only minimal-size core files are supported: that is, only the stack memory of threads is included with other necessary structures, such as the list of threads.
 * When a process creates a core dump of itself, the thread invoking core file creation won't have its proper state recorded.
-* Since Apple's platforms lack the necessary infrastructure (e.g. system binaries are not provided for download, and let's not even talk about the lack of a symbol/binary/source server technology...), symbols for binaries that you don't have the exact version of (most notably, system binaries) will not show up in call stacks, if a core file is opened on a different system that it was captured on.
+* Since Apple's platforms lack the necessary infrastructure (e.g. a public symbol server), symbols for binaries that you don't have the exact version of (most notably, system binaries) will not show up in call stacks if a core file is opened on a different system than it was captured on.
 * Capturing a core file of an other process with a different architecture is not supported.
 * While x86-64 is supported, this library has some limitations with that architecture, resulting in reduced functionality. Support will be removed altogether in a future version.
   * The stackwalking code necessary to determine which pieces of memory containing code is saved in core files in certain situations skips some frames. This sometimes makes backtraces incomplete when opening core files in LLDB.
