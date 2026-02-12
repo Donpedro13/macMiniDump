@@ -192,9 +192,71 @@ def VerifySegmentsInCoreFile(core_path: str, callstacks: list[list]):
             if end > prev_end:
                 prev_start, prev_end = start, end
 
+def VerifyNoOverlappingModuleSections(process: lldb.SBProcess):
+    """Check that no byte of memory maps to more than one loaded section (duplicate/overlapping
+    sections cause LLDB warnings). dyld is excluded as it can legitimately appear twice.
+    Modules from the dyld shared cache are also excluded from pairwise overlap checks,
+    because their segments are interleaved by design inside the cache."""
+    target = process.GetTarget()
+
+    # Identify shared cache modules: they all share one __LINKEDIT region, so any two
+    # modules whose __LINKEDIT sections overlap are part of the shared cache.
+    linkedit_ranges = []
+    for mi in range(target.GetNumModules()):
+        module = target.GetModuleAtIndex(mi)
+        mod_name = module.GetFileSpec().GetFilename()
+        for si in range(module.GetNumSections()):
+            section = module.GetSectionAtIndex(si)
+            if section.GetName() == "__LINKEDIT":
+                load_addr = section.GetLoadAddress(target)
+                if load_addr != lldb.LLDB_INVALID_ADDRESS and section.GetByteSize() > 0:
+                    linkedit_ranges.append((load_addr, load_addr + section.GetByteSize(), mod_name))
+
+    shared_cache_modules = set()
+    for i in range(len(linkedit_ranges)):
+        for j in range(i + 1, len(linkedit_ranges)):
+            s1, e1, m1 = linkedit_ranges[i]
+            s2, e2, m2 = linkedit_ranges[j]
+            if s1 < e2 and s2 < e1:
+                shared_cache_modules.add(m1)
+                shared_cache_modules.add(m2)
+
+    loaded_sections = []
+    for mi in range(target.GetNumModules()):
+        module = target.GetModuleAtIndex(mi)
+        mod_name = module.GetFileSpec().GetFilename()
+        if mod_name == "dyld":
+            continue
+        for si in range(module.GetNumSections()):
+            section = module.GetSectionAtIndex(si)
+            load_addr = section.GetLoadAddress(target)
+            if load_addr == lldb.LLDB_INVALID_ADDRESS:
+                continue
+            size = section.GetByteSize()
+            if size == 0:
+                continue
+            loaded_sections.append((load_addr, load_addr + size, mod_name, section.GetName()))
+
+    loaded_sections.sort(key=lambda s: s[0])
+    for i in range(len(loaded_sections) - 1):
+        _, prev_end, prev_module, prev_section = loaded_sections[i]
+        next_start, _, next_module, next_section = loaded_sections[i + 1]
+        if next_start < prev_end:
+            # Shared cache modules have interleaved segments by design; skip those pairs
+            if prev_module in shared_cache_modules and next_module in shared_cache_modules:
+                continue
+            raise RuntimeError(
+                f"Overlapping loaded sections in core file: "
+                f"{prev_module}:{prev_section} ends at {hex(prev_end)} but "
+                f"{next_module}:{next_section} starts at {hex(next_start)}"
+            )
+
 def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
     # Check if reason is stopped
     process = CreateLLDBProcessForCoreFile(core_path)
+
+    VerifyNoOverlappingModuleSections(process)
+
     if process.GetState() != lldb.eStateStopped:
         raise RuntimeError("Process is not in stopped state after loading core file")
     

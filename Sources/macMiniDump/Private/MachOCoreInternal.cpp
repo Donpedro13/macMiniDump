@@ -7,6 +7,7 @@ namespace MachOCore {
 
 const char* AddrableBitsOwner	 = "addrable bits";
 const char* AllImageInfosOwner	 = "all image infos";
+const char* MainBinSpecOwner	 = "main bin spec";
 const char* ProcessMetadataOwner = "process metadata";
 
 ThreadInfo::ThreadInfo (thread_act_t threads_i, bool suspendWhileInspecting):

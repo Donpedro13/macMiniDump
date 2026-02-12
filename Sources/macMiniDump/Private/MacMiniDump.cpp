@@ -1,5 +1,6 @@
 #include "MMD/MacMiniDump.hpp"
 
+#include <mach-o/loader.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <mach/vm_map.h>
@@ -140,6 +141,34 @@ String CreateProcessMetadataPayload (const Vector<uint64_t>& threadIds)
 	return result;
 }
 
+bool IsMainExecutable (const ModuleList::ModuleInfo& moduleInfo)
+{
+	const mach_header_64* pHeader =
+		reinterpret_cast<const mach_header_64*> (moduleInfo.headerAndLoadCommandBytes.get ());
+	return pHeader->filetype == MH_EXECUTE;
+}
+
+// Get the preferred (unslid) __TEXT segment vmaddr from the raw mach_header + load commands
+uintptr_t GetPreferredTextAddress (const ModuleList::ModuleInfo& moduleInfo)
+{
+	const char*			  pRaw	  = moduleInfo.headerAndLoadCommandBytes.get ();
+	const mach_header_64* pHeader = reinterpret_cast<const mach_header_64*> (pRaw);
+	const char*			  pCmdRaw = pRaw + sizeof (mach_header_64);
+
+	for (uint32_t i = 0; i < pHeader->ncmds; ++i) {
+		const load_command* pCmd = reinterpret_cast<const load_command*> (pCmdRaw);
+		if (pCmd->cmd == LC_SEGMENT_64) {
+			const segment_command_64* pSegCmd = reinterpret_cast<const segment_command_64*> (pCmd);
+			if (strncmp (pSegCmd->segname, "__TEXT", sizeof pSegCmd->segname) == 0)
+				return pSegCmd->vmaddr;
+		}
+
+		pCmdRaw += pCmd->cmdsize;
+	}
+
+	return 0;
+}
+
 Vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleList& modules)
 {
 	// The structure of this payload is the following:
@@ -180,12 +209,14 @@ Vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleLis
 	if (!modules.IsValid ())
 		return {};
 
-	const size_t				   nModules = modules.GetSize ();
-	MachOCore::AllImageInfosHeader header	= {};
-	header.version							= 1;
-	header.imgcount							= (uint32_t) (nModules); // Modules are id'd by index in the structure
-	header.entries_size						= sizeof (MachOCore::ImageEntry);
-	header.entries_fileoff					= payloadOffset + sizeof (MachOCore::AllImageInfosHeader);
+	// -1 : skip the main binary, which will be handled via the "main bin spec" LC_NOTE below
+	size_t nModules = modules.GetSize () - 1;
+
+	MachOCore::AllImageInfosHeader header = {};
+	header.version						  = 1;
+	header.imgcount						  = (uint32_t) (nModules);
+	header.entries_size					  = sizeof (MachOCore::ImageEntry);
+	header.entries_fileoff				  = payloadOffset + sizeof (MachOCore::AllImageInfosHeader);
 
 	// Prepare segment list of all modules (and while at it, calculate some of the space needed for the whole payload,
 	//   this info will be used later)
@@ -193,6 +224,10 @@ Vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleLis
 	size_t									 modulePathsSize = 0;
 	Vector<Vector<MachOCore::SegmentVMAddr>> segmentListList;
 	for (const auto& [loadAddr, moduleInfo] : modules) {
+		// Skip main executable - handled via "main bin spec" LC_NOTE
+		if (IsMainExecutable (moduleInfo))
+			continue;
+
 		Vector<MachOCore::SegmentVMAddr> segmentVMAddrs;
 		modulePathsSize += moduleInfo.filePath.length () + sizeof '\0';
 
@@ -235,6 +270,9 @@ Vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleLis
 	size_t currSegAddrsOffset	   = currModulePathOffset - segmentEntriesSize;
 	size_t currImageEntryMemOffset = offset;
 	for (const auto& [loadAddr, moduleInfo] : modules) {
+		if (IsMainExecutable (moduleInfo))
+			continue;
+
 		MachOCore::ImageEntry imageEntry = {};
 		imageEntry.filepath_offset		 = currModulePathOffset;
 		memcpy (&imageEntry.uuid, &moduleInfo.uuid, sizeof imageEntry.uuid);
@@ -263,12 +301,40 @@ Vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleLis
 	// And finally, module path (zero-terminated) strings
 	size_t currModulePathMemOffset = payloadSize - modulePathsSize;
 	for (const auto& [loadAddr, moduleInfo] : modules) {
+		if (IsMainExecutable (moduleInfo))
+			continue;
+
 		strcpy (&result[currModulePathMemOffset], moduleInfo.filePath.c_str ());
 
 		currModulePathMemOffset += moduleInfo.filePath.length () + sizeof '\0';
 	}
 
 	return result;
+}
+
+MachOCore::MainBinSpec CreateMainBinSpecPayload (const ModuleList& modules)
+{
+	for (const auto& [loadAddr, moduleInfo] : modules) {
+		if (!IsMainExecutable (moduleInfo))
+			continue;
+
+		MachOCore::MainBinSpec mainBinSpec = {};
+		mainBinSpec.version				   = 2;
+		mainBinSpec.type				   = 0;			 // eBinaryTypeUnknown - triggers immediate load
+		mainBinSpec.address				   = UINT64_MAX; // unspecified
+		mainBinSpec.slide				   = loadAddr - GetPreferredTextAddress (moduleInfo);
+		memcpy (&mainBinSpec.uuid, &moduleInfo.uuid, sizeof mainBinSpec.uuid);
+		mainBinSpec.log2_pagesize = 0;
+		mainBinSpec.platform	  = 0;
+
+		return mainBinSpec;
+	}
+
+	MMD_DEBUGLOG_LINE << "No main executable found among modules, cannot create MainBinSpec payload!";
+
+	assert (false);
+
+	return {};
 }
 
 bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		  pCoreBuilder,
@@ -317,6 +383,14 @@ bool AddPayloadsAndWrite (MachOCoreDumpBuilder*		  pCoreBuilder,
 										 std::make_unique<DataProvider> (new CopiedDataPtr (&imageInfosPayload[0],
 																							imageInfosPayload.size ()),
 																		 imageInfosPayload.size ()));
+
+	// Main binary spec - tells LLDB the UUID and ASLR slide of the main executable so it
+	// doesn't create a duplicate module at the unslid address (per LLVM D158785))
+	MachOCore::MainBinSpec mainBinSpec = CreateMainBinSpecPayload (modules);
+	pCoreBuilder->AddDataProviderForNoteCommand (MachOCore::MainBinSpecOwner,
+												 std::make_unique<DataProvider> (new CopiedDataPtr (&mainBinSpec,
+																									sizeof mainBinSpec),
+																				 sizeof mainBinSpec));
 
 	for (size_t i = 0; i < pCoreBuilder->GetNumberOfSegmentCommands (); ++i) {
 		segment_command_64* pSegment = pCoreBuilder->GetSegmentCommand (i);
@@ -528,8 +602,9 @@ bool AddNotesToCore (MachOCoreDumpBuilder* pCoreBuilder)
 {
 	// Payloads for these will be added later
 	pCoreBuilder->AddNoteCommand (MachOCore::AddrableBitsOwner);
-	pCoreBuilder->AddNoteCommand (MachOCore::ProcessMetadataOwner);
 	pCoreBuilder->AddNoteCommand (MachOCore::AllImageInfosOwner);
+	pCoreBuilder->AddNoteCommand (MachOCore::MainBinSpecOwner);
+	pCoreBuilder->AddNoteCommand (MachOCore::ProcessMetadataOwner);
 
 	return true;
 }

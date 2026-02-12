@@ -42,6 +42,20 @@ struct SegmentVMAddr {
 	uint64_t unused		 = 0;
 };
 
+// "main bin spec" LC_NOTE payload for the main executable binary.
+// This tells LLDB how to slide/load the main executable, preventing
+// duplicate module entries when the binary is specified on the command line.
+// This definition was taken from LLDB (see LLVM D158785).
+struct MainBinSpec {
+	uint32_t version       = 2;
+	uint32_t type          = 0;           // 0 = unspecified (triggers immediate load in LLDB)
+	uint64_t address       = UINT64_MAX;  // UINT64_MAX = unspecified
+	uint64_t slide         = UINT64_MAX;  // ASLR slide, UINT64_MAX = unspecified
+	uuid_t   uuid          = {};
+	uint32_t log2_pagesize = 0;           // 0 = unspecified
+	uint32_t platform      = 0;           // 0 = unspecified
+};
+
 enum class RegSetKind : uint32_t {
 #ifdef __x86_64__
 	GPR = 4,
@@ -131,6 +145,7 @@ public:
 	size_t AddressWidthInBytes () const;
 };
 
+extern const char* MainBinSpecOwner;
 extern const char* AddrableBitsOwner;
 extern const char* AllImageInfosOwner;
 extern const char* ProcessMetadataOwner;
