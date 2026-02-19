@@ -5,6 +5,10 @@ IF(NOT APPLE)
 	MESSAGE(FATAL_ERROR "macMiniDump can only be built on macOS!")
 ENDIF()
 
+
+SET(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "macOS deployment target" FORCE)
+
+
 PROJECT(macMiniDump)
 
 # Global CMake configurations
