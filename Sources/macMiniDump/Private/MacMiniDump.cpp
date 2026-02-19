@@ -231,20 +231,11 @@ Vector<char> CreateAllImageInfosPayload (uint64_t payloadOffset, const ModuleLis
 		Vector<MachOCore::SegmentVMAddr> segmentVMAddrs;
 		modulePathsSize += moduleInfo.filePath.length () + sizeof '\0';
 
-		MMD_DEBUGLOG_LINE << "\nImage"
-						  << "\n"
-						  << "\t" << moduleInfo.filePath << "\n\tLoad address: " << moduleInfo.loadAddress
-						  << "\n\tSegment Count: " << moduleInfo.segments.size ();
-
 		const ModuleList::Segments& segments = moduleInfo.segments;
 		for (const auto& section : segments) {
 			MachOCore::SegmentVMAddr newVMAddr = {};
 			strncpy (newVMAddr.segname, section.segmentName, sizeof section.segmentName);
 			newVMAddr.vmaddr = section.address;
-
-			MMD_DEBUGLOG_LINE << "\nSegment"
-							  << "\n"
-							  << "\t" << section.segmentName << "\n\tAddress: " << section.address;
 
 			segmentVMAddrs.push_back (newVMAddr);
 			++nSegments;
