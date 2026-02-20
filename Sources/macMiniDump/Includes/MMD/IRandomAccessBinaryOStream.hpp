@@ -4,13 +4,15 @@
 #pragma once
 
 #include <cstddef>
+#include <type_traits>
 
 namespace MMD {
 
 class IRandomAccessBinaryOStream {
 public:
 	IRandomAccessBinaryOStream ();
-	IRandomAccessBinaryOStream (const IRandomAccessBinaryOStream& rhs) = delete;
+	IRandomAccessBinaryOStream (const IRandomAccessBinaryOStream& rhs)			  = delete;
+	IRandomAccessBinaryOStream& operator= (const IRandomAccessBinaryOStream& rhs) = delete;
 
 	virtual bool Write (const void* pData, size_t size) = 0;
 
@@ -31,6 +33,8 @@ public:
 template<typename T>
 bool IRandomAccessBinaryOStream::Write (const T& data)
 {
+	static_assert (std::is_trivially_copyable_v<T>);
+
 	return Write (reinterpret_cast<const char*> (&data), sizeof data);
 }
 
