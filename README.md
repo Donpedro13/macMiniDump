@@ -32,6 +32,7 @@ The project is self-contained: no special environment, no third-party dependenci
 
 ## Limitations
 
+* The set of memory regions included in core files is currently not configurable, only a minimum amount is included necessary for stack backtraces to work.
 * LLDB versions older than 14 have issues with core files created by this library
 * Currently, only minimal-size core files are supported: that is, only the stack memory of threads is included with other necessary structures, such as the list of threads.
 * When a process creates a core dump of itself, the thread invoking core file creation won't have its proper state recorded.
