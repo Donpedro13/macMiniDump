@@ -3,6 +3,10 @@
 
 #pragma once
 
+#define MMD_VERSION_MAJOR 0
+#define MMD_VERSION_MINOR 1
+#define MMD_VERSION_BUGFIX 0
+
 #include <mach/port.h>
 #include <sys/types.h>
 
