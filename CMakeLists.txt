@@ -48,7 +48,7 @@ SET(BASE_DEBUG_FLAGS ${BASE_DEBUG_FLAGS_IMPL})
 # Compile flags for all release-like builds
 STRING(CONCAT BASE_RELEASE_FLAGS_IMPL
 			  "-O2 "
-			  "/D NDEBUG "
+			  "-D NDEBUG "
 			  )
 SET(BASE_RELEASE_FLAGS ${BASE_RELEASE_FLAGS_IMPL})
 
