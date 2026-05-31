@@ -361,12 +361,28 @@ bool LaunchOOPWorkerForOperation (const std::string& operation, bool onBackgroun
 }
 
 extern "C" int CreateCoreFromCImpl (char* pPath); // From CCompatTest.c
+extern "C" int CrashInvalidPtrWriteFromObjCImpl (); // From ObjCOperations.m
+extern "C" int RaiseUnhandledObjCExceptionImpl (); // From ObjCOperations.m
 
 bool CreateCoreFromC (const std::string& corePath)
 {
 	CreateCoreFromCImpl (const_cast<char*> (corePath.c_str ()));
 
 	return true; // Unreachable
+}
+
+NOINLINE bool CrashInvalidPtrWriteFromObjC (const std::string& /*corePath*/)
+{
+	CrashInvalidPtrWriteFromObjCImpl ();
+
+	return false; // Unreachable
+}
+
+NOINLINE bool AbortUnhandledObjCException (const std::string& /*corePath*/)
+{
+	RaiseUnhandledObjCExceptionImpl ();
+
+	return false; // Unreachable
 }
 
 void SetupMiscThreads ()
@@ -389,10 +405,12 @@ std::map<std::string, std::function<bool (const std::string&)>> g_operations = {
 	{ "CorruptHeapThenCreateCoreFile", CorruptHeapThenCreateCoreFile },
 	{ "CreateCoreFromC", CreateCoreFromC },
 	{ "CrashInvalidPtrWrite", CrashInvalidPtrWrite },
+	{ "CrashInvalidPtrWriteFromObjC", CrashInvalidPtrWriteFromObjC },
 	{ "CrashNullPtrCall", CrashNullPtrCall },
 	{ "CrashInvalidPtrCall", CrashInvalidPtrCall },
 	{ "CrashNonExecutablePtrCall", CrashNonExecutablePtrCall },
 	{ "AbortPureVirtualCall", AbortPureVirtualCall },
+	{ "AbortUnhandledObjCException", AbortUnhandledObjCException },
 };
 
 void PrintUsage (const char* argv0)

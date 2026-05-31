@@ -377,7 +377,10 @@ def add_testcase(fixture, name, operation, oop: bool, background_thread: bool, e
         testcases[fixture] = []
     testcases[fixture].append({"name": name, "operation": operation, "oop": oop, "background_thread": background_thread, "expectation": expectation})
 
-operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashNullPtrCall", "CrashInvalidPtrCall", "CrashNonExecutablePtrCall", "AbortPureVirtualCall"]
+operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashInvalidPtrWriteFromObjC", "CrashNullPtrCall", "CrashInvalidPtrCall", "CrashNonExecutablePtrCall", "AbortPureVirtualCall", "AbortUnhandledObjCException"]
+operation_expectation_overrides = {
+    "CrashInvalidPtrWriteFromObjC": CoreFileTestExpectation(relevant_func_name="crashInvalidPtrWrite"),
+}
 oop = [True, False]
 background_thread = [True, False]
 
@@ -424,6 +427,9 @@ for op in operations:
                     expectation = expectation | CoreFileTestExpectation(relevant_frame_index=1)
             elif "Abort" in op:
                 expectation = expectation | CoreFileTestExpectation(relevant_frame_index=2, relevant_func_name="abort")
+
+            if op in operation_expectation_overrides:
+                expectation = expectation | operation_expectation_overrides[op]
 
             add_testcase(corefile_test_fixture, test_name, op, is_oop, is_background, expectation)
 
