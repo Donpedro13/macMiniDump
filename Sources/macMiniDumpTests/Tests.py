@@ -105,6 +105,8 @@ class CoreFileTestExpectation:
 
     required_images : Optional[list] = None
 
+    required_func_names : Optional[list] = None
+
     crash : bool = False
     exception_string : Optional[str] = None
     exception_fault_address : Optional[int] = None
@@ -368,6 +370,21 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
                         if var_value != str(expected_value):
                             raise RuntimeError(f"Expected local variable '{var_name}' to have value '{expected_value}', but found '{var_value}'")
                         
+        if expectation.required_func_names is not None:
+            if i == expectation.relevant_thread_index:
+                missing_required_func_names = list(expectation.required_func_names)
+                for j in range(stack_depth):
+                    frame = thread.GetFrameAtIndex(j)
+                    func_name = frame.GetFunctionName()
+                    if func_name is None:
+                        continue
+                    missing_required_func_names = [required_func_name for required_func_name in missing_required_func_names if required_func_name not in func_name]
+                    if not missing_required_func_names:
+                        break
+                    
+                if missing_required_func_names:
+                    raise RuntimeError(f"Required function names {missing_required_func_names} were not found in the callstack of thread {i}")
+                        
     VerifySegmentsInCoreFile(core_path, callstacks)
 
 corefile_test_fixture = CoreFileTestFixture()
@@ -426,10 +443,16 @@ for op in operations:
                 elif "PtrCall" in op:
                     expectation = expectation | CoreFileTestExpectation(relevant_frame_index=1)
             elif "Abort" in op:
-                expectation = expectation | CoreFileTestExpectation(relevant_frame_index=2, relevant_func_name="abort")
+                expectation = expectation | CoreFileTestExpectation(relevant_frame_index=2, relevant_func_name="abort", required_func_names=[op])
 
             if op in operation_expectation_overrides:
                 expectation = expectation | operation_expectation_overrides[op]
+
+            if "Crash" in op or "Abort" in op:
+                required_func_names = list(expectation.required_func_names or [])
+                thread_entry_func_name = "_pthread_start" if is_background else "start"
+                required_func_names.append(thread_entry_func_name)
+                expectation = expectation | CoreFileTestExpectation(required_func_names=required_func_names)
 
             add_testcase(corefile_test_fixture, test_name, op, is_oop, is_background, expectation)
 
