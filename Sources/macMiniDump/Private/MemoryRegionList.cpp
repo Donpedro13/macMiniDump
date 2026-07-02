@@ -8,24 +8,31 @@ namespace MMD {
 
 MemoryRegionList::MemoryRegionList (mach_port_t taskPort)
 {
-	kern_return_t			 kr		 = KERN_SUCCESS;
-	vm_address_t			 address = MACH_VM_MIN_ADDRESS;
-	vm_size_t				 size	 = 0;
-	natural_t				 depth	 = 0;
-	vm_region_submap_info_64 info;
-	mach_msg_type_number_t	 infoCount = VM_REGION_SUBMAP_INFO_COUNT_64;
+	vm_address_t address = MACH_VM_MIN_ADDRESS;
+	natural_t	 depth	 = 0;
 
-	// With this simple loop we seem to be missing many mappings (compared to the output of vmmap for the same process)
-	//   In all my tests thread stacks were included, but still, this should be fixed...
-	while (kr == KERN_SUCCESS) {
-		kr = vm_region_recurse_64 (taskPort, &address, &size, &depth, (vm_region_recurse_info_t) &info, &infoCount);
+	// The address space is a tree: many real leaf mappings (e.g. the dyld shared cache, where system libraries live)
+	//   are nested inside submaps. We must descend into submaps to enumerate them, otherwise we miss most regions.
+	while (true) {
+		vm_size_t				 size	   = 0;
+		vm_region_submap_info_64 info;
+		mach_msg_type_number_t	 infoCount = VM_REGION_SUBMAP_INFO_COUNT_64;
+
+		kern_return_t kr =
+			vm_region_recurse_64 (taskPort, &address, &size, &depth, (vm_region_recurse_info_t) &info, &infoCount);
+		if (kr != KERN_SUCCESS)
+			break;
+
+		// If this entry is a submap, descend into it (retry at the same address, one level deeper)
+		if (info.is_submap) {
+			++depth;
+			continue;
+		}
 
 		MemoryRegionInfo regionInfo = {};
 		regionInfo.vmaddr			= address;
 		regionInfo.vmsize			= size;
-		regionInfo.prot				= MemProtNone;
-
-		regionInfo.prot = info.protection;
+		regionInfo.prot				= info.protection;
 
 		switch (info.user_tag) {
 			case VM_MEMORY_STACK:
@@ -58,7 +65,7 @@ MemoryRegionList::MemoryRegionList (mach_port_t taskPort)
 
 bool MemoryRegionList::IsValid () const
 {
-	return m_regionInfos.empty ();
+	return !m_regionInfos.empty ();
 }
 
 size_t MemoryRegionList::GetSize () const
@@ -79,7 +86,7 @@ bool MemoryRegionList::GetRegionInfoForAddress (uint64_t address, const MemoryRe
 		return false;
 
 	auto isInRegion = [] (uint64_t addr, const MemoryRegionInfo& ri) {
-		return addr >= ri.vmaddr && addr <= ri.vmaddr + ri.vmsize;
+		return addr >= ri.vmaddr && addr < ri.vmaddr + ri.vmsize;
 	};
 
 	// Get the element that is greater or equal to the address

@@ -532,20 +532,33 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 		for (const auto ip : callStack) {
 			// Add some memory before and after every instruction pointer on the call stack. This is needed for
-			// stack walking to work properly when opening the core, as LLDB checks the protection of the memory
+			// stack walking to work properly when opening the core, as LLDB checks both the availability and the protection of the memory
 			// these addresses point to during stack walking. This is crucial for modules which are not available when
 			// opening the core file (frequent case: system libraries). If the memory is not included, it will assume
 			// these as non-executable, and simply abort the stackwalk. In addition, we also have the nice benefit of
 			// being able to see some disassembly, even if modules are missing. Modified code bytes are a use case, too.
 
 			const size_t SurroundingsRange = 256;
-			// Make sure we do not under- or overflow (e.g. nullptr, or a very large address)
-			if (ip >= SurroundingsRange && ip <= UINT64_MAX - SurroundingsRange) {
-				const uint64_t start  = ip - SurroundingsRange;
-				const size_t   length = (2 * SurroundingsRange) + 1;
-				memoryRangesToAdd.InsertAndMergeIfNeeded (start, length);
-			} else {
-				MMD_DEBUGLOG_LINE << "Skipping address " << ip << " on thread #" << i << " because it is out of range!";
+
+			// It's possible for the instruction pointer to point to non-executable memory. This will break LLDB's stack walking (see the comment above),
+			// so we only add surrounding memory if it is executable.
+			MemoryRegionInfo ipRegionInfo;
+			if (memoryRegions.GetRegionInfoForAddress (ip, &ipRegionInfo) && ipRegionInfo.prot & MemProtExecute) {
+				// Make sure we do not under- or overflow (e.g. nullptr, or a very large address)
+				uint64_t start = ip >= SurroundingsRange ? ip - SurroundingsRange : 0;
+				uint64_t end   = ip <= UINT64_MAX - SurroundingsRange ? ip + SurroundingsRange : UINT64_MAX;
+
+				// Clamp the range to the bounds of the containing region, so we never spill into a neighbouring mapping
+				const uint64_t regionStart = ipRegionInfo.vmaddr;
+				const uint64_t regionEnd   = ipRegionInfo.vmaddr + ipRegionInfo.vmsize;
+
+				if (start < regionStart)
+					start = regionStart;
+					
+				if (end > regionEnd)
+					end = regionEnd;
+
+				memoryRangesToAdd.InsertAndMergeIfNeeded (start, end - start);
 			}
 
 			// Mark modules as executing if an address corresponding to a module is on a call stack. According to lldb's

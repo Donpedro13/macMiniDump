@@ -31,6 +31,7 @@ std::string g_corePath;
 volatile int a = 0;
 
 const uintptr_t InvalidPtr = 0xFFFFFFFFFFFA7B00;
+const char FillPattern = 0xAB;
 
 size_t GetTotalMachPortRightsRefs ()
 {
@@ -113,6 +114,26 @@ NOINLINE bool CrashNonExecutablePtrCall (const std::string& /*corePath*/)
 
 	typedef void (*FuncPtr) ();
 	FuncPtr func = reinterpret_cast<FuncPtr> (const_cast<char*> (g_1.c_str ()));
+	func ();
+
+	return false; // Unreachable
+}
+
+NOINLINE bool CrashMisalignedPtrCall (const std::string& /*corePath*/)
+{
+	[[maybe_unused]] volatile int local = 20250425;
+
+	const size_t pageSize = (size_t) getpagesize ();
+	vm_address_t page	  = 0;
+	if (vm_allocate (mach_task_self (), &page, pageSize, VM_FLAGS_ANYWHERE) != KERN_SUCCESS)
+		return false;
+
+	memset ((void*) page, FillPattern, pageSize);
+
+	void* misalignedPtr = (void*) (page + 1);
+
+	typedef void (*FuncPtr) ();
+	FuncPtr func = reinterpret_cast<FuncPtr> (misalignedPtr);
 	func ();
 
 	return false; // Unreachable
@@ -216,7 +237,7 @@ NOINLINE bool CorruptHeapThenCreateCoreFile (const std::string& corePath)
 				VM_PROT_READ | VM_PROT_WRITE);
 
 	// Overwrite the entire zone with garbage
-	memset (realDefaultZone, 0xDE, sizeof (malloc_zone_t));
+	memset (realDefaultZone, FillPattern, sizeof (malloc_zone_t));
 
 	// After core file creation is done, we quit right away; since the heap is corrupted, we don't want any global
 	//   destructors etc. to run
@@ -408,6 +429,7 @@ std::map<std::string, std::function<bool (const std::string&)>> g_operations = {
 	{ "CrashInvalidPtrWriteFromObjC", CrashInvalidPtrWriteFromObjC },
 	{ "CrashNullPtrCall", CrashNullPtrCall },
 	{ "CrashInvalidPtrCall", CrashInvalidPtrCall },
+	{ "CrashMisalignedPtrCall", CrashMisalignedPtrCall },
 	{ "CrashNonExecutablePtrCall", CrashNonExecutablePtrCall },
 	{ "AbortPureVirtualCall", AbortPureVirtualCall },
 	{ "AbortUnhandledObjCException", AbortUnhandledObjCException },

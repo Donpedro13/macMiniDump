@@ -40,6 +40,7 @@ bool ExceptionMightBeControlTransferRelated (MachOCore::EXC const& exc)
 	// See: aarch64/exceptions/exceptions/AArch64.ExceptionClass in the corresponding ARM Reference Manual
 	switch (exceptionClass) {
 		case 0x20: // Instruction Abort
+		case 0x22: // PC alignment fault
 		case 0x24: // Data Abort
 			return true;
 		default:
