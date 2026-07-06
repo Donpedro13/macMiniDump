@@ -37,7 +37,7 @@ public:
 	// Insert interval [start, start + length). Overlapping intervals are merged.
 	void InsertAndMergeIfNeeded (uint64_t start, uint64_t length)
 	{
-		if (length == 0)
+		if (length == 0  || start > UINT64_MAX - length)
 			return;
 
 		uint64_t end = start + length;
@@ -69,6 +69,29 @@ public:
 		for (const auto& [start, end] : m_intervals) {
 			func (start, end - start);
 		}
+	}
+
+	bool Contains (uint64_t address) const
+	{
+		auto it = m_intervals.upper_bound (address);
+		if (it != m_intervals.begin ())
+			--it;
+
+		return it != m_intervals.end () && it->first <= address && it->second > address;
+	}
+
+	bool Contains (uint64_t start, uint64_t length) const
+	{
+		if (length == 0 || start > UINT64_MAX - length)
+			return false;
+
+		uint64_t end = start + length;
+
+		auto it = m_intervals.upper_bound (start);
+		if (it != m_intervals.begin ())
+			--it;
+
+		return it != m_intervals.end () && it->first <= start && it->second >= end;
 	}
 
 private:
@@ -440,6 +463,69 @@ void ResumeThreads (const Vector<MachPortSendRightRef>& threads)
 	}
 }
 
+#ifdef __arm64__
+bool TryGetFaultAddress (const arm_exception_state64_t& es, uint64_t* pFaultAddressOut)
+{
+	// A "faulting address" only makes sense for certain exception classes. Even then, its value should be considered
+	// valid, only if ESR.FnV (far not valid) is 0.
+	const uint32_t esr			  = (uint32_t) es.__esr;
+	const uint32_t exceptionClass = (esr >> 26) & 0x3F;
+	const bool	   farNotValid	  = ((esr >> 10) & 0x1) != 0;
+
+	switch (exceptionClass) {
+		case 0x20: // Instruction Abort
+		case 0x24: // Data Abort
+			if (farNotValid)
+				return false;
+			break;
+
+		case 0x22: // PC alignment fault
+			// FAR is always valid, according to the reference manual
+			break;
+
+		default:
+			return false;
+	}
+
+	*pFaultAddressOut = es.__far;
+
+	return true;
+}
+
+void AddFaultAddressSurroundings (const MemoryRegionList& memoryRegions,
+								  uint64_t				  faultAddress,
+								  DisjointIntervalSet*	  pMemoryRangesToAdd)
+{
+	const uint64_t MaxFaultSurroundingsBytes = 512;
+
+	if (faultAddress == 0)
+		return;
+
+	MemoryRegionInfo regionInfo;
+	if (!memoryRegions.GetRegionInfoForAddress (faultAddress, &regionInfo))
+		return; // Fault address points to unmapped memory - there is nothing to include
+
+	const uint64_t regionStart = regionInfo.vmaddr;
+	const uint64_t regionEnd   = regionInfo.vmaddr + regionInfo.vmsize;
+
+	// Center the window around the fault address, then clamp it to the bounds of the mapped region
+	const uint64_t halfRange = MaxFaultSurroundingsBytes / 2;
+
+	uint64_t start = faultAddress > halfRange ? faultAddress - halfRange : 0;
+	if (start < regionStart)
+		start = regionStart;
+
+	uint64_t end = faultAddress <= UINT64_MAX - halfRange ? faultAddress + halfRange : UINT64_MAX;
+	if (end > regionEnd)
+		end = regionEnd;
+
+	if (end <= start)
+		return;
+
+	pMemoryRangesToAdd->InsertAndMergeIfNeeded (start, end - start);
+}
+#endif
+
 bool AddThreadsToCore (mach_port_t			 taskPort,
 					   MachOCoreDumpBuilder* pCoreBuilder,
 					   ModuleList*			 pModules,
@@ -466,6 +552,8 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 	// Collect all memory ranges to add, then merge overlapping ones before adding to core
 	DisjointIntervalSet memoryRangesToAdd;
+	// There are also some memory ranges that we want to avoid including
+	DisjointIntervalSet memoryRangesToExclude;
 
 	for (unsigned int i = 0; i < nThreads; ++i) {
 #ifdef __x86_64__
@@ -538,17 +626,17 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			// these as non-executable, and simply abort the stackwalk. In addition, we also have the nice benefit of
 			// being able to see some disassembly, even if modules are missing. Modified code bytes are a use case, too.
 
-			const size_t SurroundingsRange = 256;
-
-			// It's possible for the instruction pointer to point to non-executable memory. This will break LLDB's stack walking (see the comment above),
-			// so we only add surrounding memory if it is executable.
 			MemoryRegionInfo ipRegionInfo;
-			if (memoryRegions.GetRegionInfoForAddress (ip, &ipRegionInfo) && ipRegionInfo.prot & MemProtExecute) {
+			if (memoryRegions.GetRegionInfoForAddress (ip, &ipRegionInfo)) {
+				const size_t SurroundingsRange = 256;
+
+				// It's possible for the instruction pointer to point to non-executable memory. This will break LLDB's stack walking (see the comment above),
+				// so we only add surrounding memory if it is executable.
 				// Make sure we do not under- or overflow (e.g. nullptr, or a very large address)
 				uint64_t start = ip >= SurroundingsRange ? ip - SurroundingsRange : 0;
 				uint64_t end   = ip <= UINT64_MAX - SurroundingsRange ? ip + SurroundingsRange : UINT64_MAX;
 
-				// Clamp the range to the bounds of the containing region, so we never spill into a neighbouring mapping
+				// Clamp the range to the bounds of the containing region, so we never spill into a neighboring mapping
 				const uint64_t regionStart = ipRegionInfo.vmaddr;
 				const uint64_t regionEnd   = ipRegionInfo.vmaddr + ipRegionInfo.vmsize;
 
@@ -558,7 +646,10 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 				if (end > regionEnd)
 					end = regionEnd;
 
-				memoryRangesToAdd.InsertAndMergeIfNeeded (start, end - start);
+				if (ipRegionInfo.prot & MemProtExecute) 
+					memoryRangesToAdd.InsertAndMergeIfNeeded (start, end - start);
+				else
+					memoryRangesToExclude.InsertAndMergeIfNeeded (start, end - start);
 			}
 
 			// Mark modules as executing if an address corresponding to a module is on a call stack. According to lldb's
@@ -589,6 +680,23 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			const uint64_t stackSegmentStart = stackStart - lengthInBytes;
 			memoryRangesToAdd.InsertAndMergeIfNeeded (stackSegmentStart, lengthInBytes);
 		}
+
+#ifdef __arm64__
+		if (pCrashContext != nullptr && tid == pCrashContext->crashedTID) {
+			// Include some memory around the fault address, so the data the crashing instruction tried to access
+			// is available for post-mortem analysis. Most of the time this memory will be either unmapped (e.g nullptr), or 
+			// already included because the address was on the call stack (see above).
+			uint64_t faultAddress = 0;
+			if (TryGetFaultAddress (es, &faultAddress)) {
+				if (!memoryRangesToExclude.Contains (faultAddress)) {
+					AddFaultAddressSurroundings (memoryRegions, faultAddress, &memoryRangesToAdd);
+				} else {
+					MMD_DEBUGLOG_LINE << "Skipping inclusion of memory around fault address 0x" << std::hex << faultAddress
+									  << std::dec <<", because it's on the exclusion list";
+				}
+			}
+		}
+#endif
 	}
 
 	// Add all merged memory ranges to core

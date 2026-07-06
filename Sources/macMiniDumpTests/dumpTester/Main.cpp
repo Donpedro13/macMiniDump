@@ -86,6 +86,26 @@ NOINLINE bool CrashInvalidPtrWrite (const std::string& /*corePath*/)
 	return false; // Unreachable
 }
 
+NOINLINE bool CrashReadOnlyPtrWrite (const std::string& /*corePath*/)
+{
+	[[maybe_unused]] volatile int local = 20250425;
+
+	const size_t pageSize = (size_t) getpagesize ();
+	vm_address_t page	  = 0;
+	if (vm_allocate (mach_task_self (), &page, pageSize, VM_FLAGS_ANYWHERE) != KERN_SUCCESS)
+		return false;
+
+	memset ((void*) page, FillPattern, pageSize);
+
+	if (vm_protect (mach_task_self (), page, pageSize, 0, VM_PROT_READ) != KERN_SUCCESS)
+		return false;
+
+	volatile int* p = (int*) (page + 64);
+	*p				= 42;
+
+	return false; // Unreachable
+}
+
 NOINLINE bool CrashNullPtrCall (const std::string& /*corePath*/)
 {
 	[[maybe_unused]] volatile int local = 20250425;
@@ -426,6 +446,7 @@ std::map<std::string, std::function<bool (const std::string&)>> g_operations = {
 	{ "CorruptHeapThenCreateCoreFile", CorruptHeapThenCreateCoreFile },
 	{ "CreateCoreFromC", CreateCoreFromC },
 	{ "CrashInvalidPtrWrite", CrashInvalidPtrWrite },
+	{ "CrashReadOnlyPtrWrite", CrashReadOnlyPtrWrite },
 	{ "CrashInvalidPtrWriteFromObjC", CrashInvalidPtrWriteFromObjC },
 	{ "CrashNullPtrCall", CrashNullPtrCall },
 	{ "CrashInvalidPtrCall", CrashInvalidPtrCall },

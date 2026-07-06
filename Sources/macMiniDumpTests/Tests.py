@@ -111,6 +111,8 @@ class CoreFileTestExpectation:
     exception_string : Optional[str] = None
     exception_fault_address : Optional[int] = None
     crash_top_pc_memory_excluded : bool = False
+    fault_address_memory_included : bool = True
+    fault_memory_fill_pattern : Optional[int] = None
 
     relevant_thread_index : Optional[int] = None
     relevant_func_name : Optional[str] = None
@@ -164,6 +166,28 @@ def GetCoreFileSegments(core_path: str) -> list[tuple]:
                 vmsize = None
 
     return segments
+
+def VerifyFaultAddressMemoryIncluded(core_path: str, fault_address: int):
+    segments = GetCoreFileSegments(core_path)
+    for start, end in segments:
+        if start <= fault_address < end:
+            return
+
+    raise RuntimeError(f"Memory around fault address {hex(fault_address)} was not included in any core file segment")
+
+def VerifyFaultAddressMemoryContent(process: lldb.SBProcess, fault_address: int, size: int, fill_pattern: int):
+    error = lldb.SBError()
+    data = process.ReadMemory(fault_address, size, error)
+    if not error.Success():
+        raise RuntimeError(f"Failed to read memory at fault address {hex(fault_address)}: {error.GetCString()}")
+
+    for byte in data:
+        actual = byte if isinstance(byte, int) else ord(byte)
+        if actual != fill_pattern:
+            raise RuntimeError(
+                f"Memory at fault address {hex(fault_address)} does not match expected fill pattern "
+                f"{hex(fill_pattern)}: found {hex(actual)}"
+            )
 
 def VerifySegmentsInCoreFile(core_path: str, callstacks: list[list], i_exception_thread: int, top_pc_memory_excluded: bool):
     # We check if every address in the callstacks is within a segment in the core file. This basically tests if stackwalking
@@ -312,17 +336,25 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
             
         thread = process.GetThreadAtIndex(i_exception_thread)
 
+        fault_address = None
+        stop_description = thread.GetStopDescription(1024)
+        match = re.search(r'(.*?) \(fault address: (0x[0-9A-Fa-f]+)\)', stop_description, re.DOTALL)
+        if match:
+            fault_address = int(match.group(2), 16)
+
         if expectation.exception_string is not None:
-            stop_description = thread.GetStopDescription(1024)
-            match = re.search(r'(.*?) \(fault address: (0x[0-9A-Fa-f]+)\)', stop_description, re.DOTALL)
             if not match:
                 raise RuntimeError("Failed to parse exception details from stop description")
             exception_string = match.group(1)
-            fault_address = int(match.group(2), 16)
             if exception_string != expectation.exception_string:
                 raise RuntimeError(f"Expected exception string '{expectation.exception_string}', but found '{exception_string}'")
             if expectation.exception_fault_address and fault_address != expectation.exception_fault_address:
                 raise RuntimeError(f"Expected fault address '{hex(expectation.exception_fault_address)}', but found '{hex(fault_address)}'")
+
+        if expectation.fault_address_memory_included:
+            VerifyFaultAddressMemoryIncluded(core_path, fault_address)
+            if expectation.fault_memory_fill_pattern:
+                VerifyFaultAddressMemoryContent(process, fault_address, size=8, fill_pattern=expectation.fault_memory_fill_pattern)
 
     # Check stack and crashed function details
     callstacks = []
@@ -405,11 +437,12 @@ def add_testcase(fixture, name, operation, oop: bool, background_thread: bool, e
         testcases[fixture] = []
     testcases[fixture].append({"name": name, "operation": operation, "oop": oop, "background_thread": background_thread, "expectation": expectation})
 
-operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashInvalidPtrWriteFromObjC", "CrashNullPtrCall", "CrashInvalidPtrCall", "CrashNonExecutablePtrCall", "CrashMisalignedPtrCall", "AbortPureVirtualCall", "AbortUnhandledObjCException"]
+operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashReadOnlyPtrWrite", "CrashInvalidPtrWriteFromObjC", "CrashNullPtrCall", "CrashInvalidPtrCall", "CrashNonExecutablePtrCall", "CrashMisalignedPtrCall", "AbortPureVirtualCall", "AbortUnhandledObjCException"]
 operation_expectation_overrides = {
     "CrashInvalidPtrWriteFromObjC": CoreFileTestExpectation(relevant_func_name="crashInvalidPtrWrite"),
-    "CrashNonExecutablePtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True),
-    "CrashMisalignedPtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True),
+    "CrashNonExecutablePtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True, fault_address_memory_included=False),
+    "CrashMisalignedPtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True, fault_address_memory_included=False),
+    "CrashReadOnlyPtrWrite": CoreFileTestExpectation(fault_memory_fill_pattern = 0xAB),
 }
 oop = [True, False]
 background_thread = [True, False]
@@ -453,6 +486,9 @@ for op in operations:
                 else:
                     fault_address = 0x0
                 expectation |= CoreFileTestExpectation(crash=True, relevant_func_name=op, relevant_func_locals={"local": "20250425"}, exception_string=exception_string, exception_fault_address=fault_address)
+
+                if "InvalidPtr" in op or "NullPtr" in op:
+                    expectation = expectation | CoreFileTestExpectation(fault_address_memory_included=False)
 
                 if "NonExecutablePtrCall" in op:
                     expectation = expectation | CoreFileTestExpectation(relevant_func_name="g_1", relevant_func_locals={})
