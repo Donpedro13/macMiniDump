@@ -117,6 +117,7 @@ class CoreFileTestExpectation:
     relevant_thread_index : Optional[int] = None
     relevant_func_name : Optional[str] = None
     relevant_func_locals : Optional[dict] = None
+    relevant_deref_locals : Optional[dict] = None
     relevant_frame_index : int = 0
     
     def __or__(self, other: 'CoreFileTestExpectation') -> 'CoreFileTestExpectation':
@@ -410,7 +411,30 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
                         var_value = var.GetValue()
                         if var_value != str(expected_value):
                             raise RuntimeError(f"Expected local variable '{var_name}' to have value '{expected_value}', but found '{var_value}'")
-                        
+
+                if expectation.relevant_deref_locals is not None:
+                    for var_name, expected_members in expectation.relevant_deref_locals.items():
+                        var = frame.FindVariable(var_name)
+                        if not var.IsValid():
+                            raise RuntimeError(f"Expected pointer local variable '{var_name}' not found in relevant function")
+
+                        pointee = var.Dereference()
+                        if not pointee.IsValid():
+                            raise RuntimeError(f"Failed to dereference pointer local variable '{var_name}'")
+
+                        for member_name, expected_value in expected_members.items():
+                            member = pointee.GetChildMemberWithName(member_name)
+                            if not member.IsValid():
+                                raise RuntimeError(f"Member '{member_name}' not found in dereferenced '{var_name}'")
+
+                            error = lldb.SBError()
+                            actual_value = member.GetValueAsUnsigned(error, 0xdeadbeef)
+                            if not error.Success():
+                                raise RuntimeError(f"Failed to read member '{var_name}.{member_name}' from core (memory around register-held pointer not included?): {error.GetCString()}")
+
+                            if actual_value != expected_value:
+                                raise RuntimeError(f"Expected member '{var_name}.{member_name}' to be {expected_value}, but found {actual_value}")
+
         if expectation.required_func_names is not None:
             if i == expectation.relevant_thread_index:
                 missing_required_func_names = list(expectation.required_func_names)
@@ -437,12 +461,13 @@ def add_testcase(fixture, name, operation, oop: bool, background_thread: bool, e
         testcases[fixture] = []
     testcases[fixture].append({"name": name, "operation": operation, "oop": oop, "background_thread": background_thread, "expectation": expectation})
 
-operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashReadOnlyPtrWrite", "CrashInvalidPtrWriteFromObjC", "CrashNullPtrCall", "CrashInvalidPtrCall", "CrashNonExecutablePtrCall", "CrashMisalignedPtrCall", "AbortPureVirtualCall", "AbortUnhandledObjCException"]
+operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashReadOnlyPtrWrite", "CrashInvalidPtrWriteFromObjC", "CrashNullPtrCall", "CrashNullPtrCallViaHeap", "CrashInvalidPtrCall", "CrashNonExecutablePtrCall", "CrashMisalignedPtrCall", "AbortPureVirtualCall", "AbortUnhandledObjCException"]
 operation_expectation_overrides = {
     "CrashInvalidPtrWriteFromObjC": CoreFileTestExpectation(relevant_func_name="crashInvalidPtrWrite"),
     "CrashNonExecutablePtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True, fault_address_memory_included=False),
     "CrashMisalignedPtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True, fault_address_memory_included=False),
     "CrashReadOnlyPtrWrite": CoreFileTestExpectation(fault_memory_fill_pattern = 0xAB),
+    "CrashNullPtrCallViaHeap": CoreFileTestExpectation(relevant_deref_locals={"pS": {"start": 20250425, "func": 0, "end": 20250425}}),
 }
 oop = [True, False]
 background_thread = [True, False]

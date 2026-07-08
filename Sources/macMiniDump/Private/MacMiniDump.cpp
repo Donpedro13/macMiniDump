@@ -32,6 +32,9 @@
 namespace MMD {
 namespace {
 
+// Several pieces of code add memory and surroundings, this constant stores the range of bytes to add (before and after)
+const size_t SurroundingsRange = 256;
+
 class DisjointIntervalSet {
 public:
 	// Insert interval [start, start + length). Overlapping intervals are merged.
@@ -119,6 +122,43 @@ bool GetMemoryProtection (mach_port_t taskPort, uint64_t addr, uint64_t size, Me
 		return true;
 	}
 }
+
+#ifdef __arm64__
+void AddMemoryAndSurroundingsPointedToByRegisters (const MemoryRegionList&	   memoryRegions,
+												   const DisjointIntervalSet&  excludedMemoryRanges,
+												   const arm_thread_state64_t& threadState,
+												   DisjointIntervalSet*		   pMemoryRangesToAdd)
+{
+	// x0..x28
+	for (size_t i = 0; i < 29; ++i) {
+		MemoryRegionInfo regionInfo;
+		if (!memoryRegions.GetRegionInfoForAddress (threadState.__x[i], &regionInfo))
+			return; // Pointer points to unmapped memory
+
+		const uint64_t regionStart = regionInfo.vmaddr;
+		const uint64_t regionEnd   = regionInfo.vmaddr + regionInfo.vmsize;
+
+		// Center the window around the pointer, then clamp it to the bounds of the mapped region, so we
+		// never spill into a neighboring mapping or under-/overflow (e.g. very small or very large values)
+		uint64_t start = threadState.__x[i] >= SurroundingsRange ? threadState.__x[i] - SurroundingsRange : 0;
+		if (start < regionStart)
+			start = regionStart;
+
+		uint64_t end =
+			threadState.__x[i] <= UINT64_MAX - SurroundingsRange ? threadState.__x[i] + SurroundingsRange : UINT64_MAX;
+		if (end > regionEnd)
+			end = regionEnd;
+
+		if (excludedMemoryRanges.Contains (threadState.__x[i]))
+			continue; // We should *not* add this piece of memory
+		else
+			pMemoryRangesToAdd->InsertAndMergeIfNeeded (start, end - start);
+	}
+
+	// We could also do the same for x29 (fp) and x30 (lr), but fp will be included already (stack memory of the current
+	// thread), and lr will point to code
+}
+#endif
 
 bool AddSegmentCommandFromProcessMemory (mach_port_t		   taskPort,
 										 MachOCoreDumpBuilder* pCoreBuilder,
@@ -696,6 +736,8 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 									  << faultAddress << std::dec << ", because it's on the exclusion list";
 				}
 			}
+
+			AddMemoryAndSurroundingsPointedToByRegisters (memoryRegions, memoryRangesToExclude, ts, &memoryRangesToAdd);
 		}
 #endif
 	}

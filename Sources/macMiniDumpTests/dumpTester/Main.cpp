@@ -117,6 +117,25 @@ NOINLINE bool CrashNullPtrCall (const std::string& /*corePath*/)
 	return false; // Unreachable
 }
 
+NOINLINE bool CrashNullPtrCallViaHeap (const std::string& /*corePath*/)
+{
+	[[maybe_unused]] volatile int local = 20250425;
+
+	typedef void (*FuncPtr) ();
+
+	struct S {
+		uint64_t start = 20250425;
+		FuncPtr	 func  = nullptr;
+		uint64_t end   = 20250425;
+	};
+
+	S* pS = new S ();
+
+	pS->func ();
+
+	return false; // Unreachable
+}
+
 NOINLINE bool CrashInvalidPtrCall (const std::string& /*corePath*/)
 {
 	[[maybe_unused]] volatile int local = 20250425;
@@ -450,6 +469,7 @@ std::map<std::string, std::function<bool (const std::string&)>> g_operations = {
 	{ "CrashReadOnlyPtrWrite", CrashReadOnlyPtrWrite },
 	{ "CrashInvalidPtrWriteFromObjC", CrashInvalidPtrWriteFromObjC },
 	{ "CrashNullPtrCall", CrashNullPtrCall },
+	{ "CrashNullPtrCallViaHeap", CrashNullPtrCallViaHeap },
 	{ "CrashInvalidPtrCall", CrashInvalidPtrCall },
 	{ "CrashMisalignedPtrCall", CrashMisalignedPtrCall },
 	{ "CrashNonExecutablePtrCall", CrashNonExecutablePtrCall },
