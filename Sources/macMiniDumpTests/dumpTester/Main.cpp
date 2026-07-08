@@ -30,8 +30,8 @@ std::string g_corePath;
 
 volatile int a = 0;
 
-const uintptr_t InvalidPtr = 0xFFFFFFFFFFFA7B00;
-const char FillPattern = 0xAB;
+const uintptr_t InvalidPtr	= 0xFFFFFFFFFFFA7B00;
+const char		FillPattern = 0xAB;
 
 size_t GetTotalMachPortRightsRefs ()
 {
@@ -43,7 +43,7 @@ size_t GetTotalMachPortRightsRefs ()
 	if (mach_port_names (mach_task_self (), &names, &namesCount, &types, &typesCount) != KERN_SUCCESS)
 		return 0;
 
-	size_t result  = 0;
+	size_t result = 0;
 
 	for (size_t i = 0; i < namesCount; ++i) {
 		mach_port_urefs_t refs = 0;
@@ -52,7 +52,7 @@ size_t GetTotalMachPortRightsRefs ()
 			return 0;
 
 		result += refs;
-		
+
 		if (mach_port_get_refs (mach_task_self (), names[i], MACH_PORT_RIGHT_SEND, &refs) != KERN_SUCCESS)
 			return 0;
 
@@ -164,13 +164,13 @@ void CallOpViaBasePtr (Base* pObject);
 class Base {
 public:
 	Base () { CallOpViaBasePtr (this); }
-	
+
 	virtual void Operation () = 0;
 };
 
 class Derived : public Base {
 public:
-	virtual void Operation () {	 }
+	virtual void Operation () {}
 };
 
 void CallOpViaBasePtr (Base* pObject)
@@ -187,10 +187,10 @@ NOINLINE bool AbortPureVirtualCall (const std::string& /*corePath*/)
 
 bool CreateCoreFileImpl (mach_port_t task, const std::string& corePath, MMDCrashContext* pCrashContext = nullptr)
 {
-	// Best-effort (in-process crash cases won't get to execute the destructor below) mach port right refs leak checker 
+	// Best-effort (in-process crash cases won't get to execute the destructor below) mach port right refs leak checker
 	class MachPortRightRefsLeakChecker {
 	public:
-		MachPortRightRefsLeakChecker () : m_initialCount (GetTotalMachPortRightsRefs ()) {}
+		MachPortRightRefsLeakChecker (): m_initialCount (GetTotalMachPortRightsRefs ()) {}
 		~MachPortRightRefsLeakChecker ()
 		{
 			const size_t finalCount = GetTotalMachPortRightsRefs ();
@@ -202,6 +202,7 @@ bool CreateCoreFileImpl (mach_port_t task, const std::string& corePath, MMDCrash
 				_exit (1);
 			}
 		}
+
 	private:
 		size_t m_initialCount;
 	} machPortLeakChecker;
@@ -229,9 +230,9 @@ NOINLINE bool CorruptHeapThenCreateCoreFile (const std::string& corePath)
 	[[maybe_unused]] volatile int local = 20250425;
 
 	// Intentionally corrupt the default malloc zone in a way that not a single memory allocation will succeed
-	vm_address_t* zones = nullptr;
+	vm_address_t* zones		= nullptr;
 	unsigned int  zoneCount = 0;
-	
+
 	// Using malloc_default_zone is not sufficient, as the default zone might be a "fake" zone that forwards to the real
 	kern_return_t kr = malloc_get_all_zones (mach_task_self (), nullptr, &zones, &zoneCount);
 	if (kr != KERN_SUCCESS || zoneCount == 0)
@@ -240,8 +241,8 @@ NOINLINE bool CorruptHeapThenCreateCoreFile (const std::string& corePath)
 	// Find the real default zone by matching its name
 	malloc_zone_t* realDefaultZone = nullptr;
 	for (unsigned int i = 0; i < zoneCount; ++i) {
-		malloc_zone_t* zone = reinterpret_cast<malloc_zone_t*> (zones[i]);
-		const char* zoneName = malloc_get_zone_name (zone);
+		malloc_zone_t* zone		= reinterpret_cast<malloc_zone_t*> (zones[i]);
+		const char*	   zoneName = malloc_get_zone_name (zone);
 		if (zoneName != nullptr && strstr (zoneName, "DefaultMallocZone") != nullptr) {
 			realDefaultZone = zone;
 			break;
@@ -253,8 +254,7 @@ NOINLINE bool CorruptHeapThenCreateCoreFile (const std::string& corePath)
 		realDefaultZone = reinterpret_cast<malloc_zone_t*> (zones[0]);
 
 	// Make the structure writable (if it isn't already...)
-	vm_protect (mach_task_self (), (vm_address_t) realDefaultZone, 4096, 0,
-				VM_PROT_READ | VM_PROT_WRITE);
+	vm_protect (mach_task_self (), (vm_address_t) realDefaultZone, 4096, 0, VM_PROT_READ | VM_PROT_WRITE);
 
 	// Overwrite the entire zone with garbage
 	memset (realDefaultZone, FillPattern, sizeof (malloc_zone_t));
@@ -355,9 +355,10 @@ bool CreateOOPWorker (const std::string& operation,
 
 bool LaunchOOPWorkerForOperation (const std::string& operation, bool onBackgroundThread, const std::string& corePath)
 {
-	const bool crash = (operation.find ("Crash") != std::string::npos) || (operation.find ("Abort") != std::string::npos);
-	pid_t	   pid;
-	int		   stdOutFd;
+	const bool crash =
+		(operation.find ("Crash") != std::string::npos) || (operation.find ("Abort") != std::string::npos);
+	pid_t pid;
+	int	  stdOutFd;
 	if (!CreateOOPWorker (operation, onBackgroundThread, crash, corePath, &stdOutFd, &pid))
 		return false;
 
@@ -401,9 +402,9 @@ bool LaunchOOPWorkerForOperation (const std::string& operation, bool onBackgroun
 	return WIFSIGNALED (status) && WTERMSIG (status) == SIGKILL;
 }
 
-extern "C" int CreateCoreFromCImpl (char* pPath); // From CCompatTest.c
+extern "C" int CreateCoreFromCImpl (char* pPath);	// From CCompatTest.c
 extern "C" int CrashInvalidPtrWriteFromObjCImpl (); // From ObjCOperations.m
-extern "C" int RaiseUnhandledObjCExceptionImpl (); // From ObjCOperations.m
+extern "C" int RaiseUnhandledObjCExceptionImpl ();	// From ObjCOperations.m
 
 bool CreateCoreFromC (const std::string& corePath)
 {
@@ -473,7 +474,8 @@ bool PerformScenario (const std::string& operation, bool oop, bool onBackgroundT
 	if (oop)
 		return LaunchOOPWorkerForOperation (operation, onBackgroundThread, corePath);
 
-	const bool crash = (operation.find ("Crash") != std::string::npos) || (operation.find ("Abort") != std::string::npos);
+	const bool crash =
+		(operation.find ("Crash") != std::string::npos) || (operation.find ("Abort") != std::string::npos);
 	if (crash)
 		SetupSignalHandler (SignalHandler);
 
@@ -495,7 +497,8 @@ bool PerformScenario (const std::string& operation, bool oop, bool onBackgroundT
 
 bool PerformOperationOOP (const std::string& operation, bool onBackgroundThread, const std::string& corePath)
 {
-	const bool crash = (operation.find ("Crash") != std::string::npos) || (operation.find ("Abort") != std::string::npos);
+	const bool crash =
+		(operation.find ("Crash") != std::string::npos) || (operation.find ("Abort") != std::string::npos);
 	if (crash)
 		SetupSignalHandler (SignalHandlerForOOPWorker);
 

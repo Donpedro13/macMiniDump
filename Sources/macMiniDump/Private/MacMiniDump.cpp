@@ -37,7 +37,7 @@ public:
 	// Insert interval [start, start + length). Overlapping intervals are merged.
 	void InsertAndMergeIfNeeded (uint64_t start, uint64_t length)
 	{
-		if (length == 0  || start > UINT64_MAX - length)
+		if (length == 0 || start > UINT64_MAX - length)
 			return;
 
 		uint64_t end = start + length;
@@ -620,19 +620,20 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 		for (const auto ip : callStack) {
 			// Add some memory before and after every instruction pointer on the call stack. This is needed for
-			// stack walking to work properly when opening the core, as LLDB checks both the availability and the protection of the memory
-			// these addresses point to during stack walking. This is crucial for modules which are not available when
-			// opening the core file (frequent case: system libraries). If the memory is not included, it will assume
-			// these as non-executable, and simply abort the stackwalk. In addition, we also have the nice benefit of
-			// being able to see some disassembly, even if modules are missing. Modified code bytes are a use case, too.
+			// stack walking to work properly when opening the core, as LLDB checks both the availability and the
+			// protection of the memory these addresses point to during stack walking. This is crucial for modules which
+			// are not available when opening the core file (frequent case: system libraries). If the memory is not
+			// included, it will assume these as non-executable, and simply abort the stackwalk. In addition, we also
+			// have the nice benefit of being able to see some disassembly, even if modules are missing. Modified code
+			// bytes are a use case, too.
 
 			MemoryRegionInfo ipRegionInfo;
 			if (memoryRegions.GetRegionInfoForAddress (ip, &ipRegionInfo)) {
 				const size_t SurroundingsRange = 256;
 
-				// It's possible for the instruction pointer to point to non-executable memory. This will break LLDB's stack walking (see the comment above),
-				// so we only add surrounding memory if it is executable.
-				// Make sure we do not under- or overflow (e.g. nullptr, or a very large address)
+				// It's possible for the instruction pointer to point to non-executable memory. This will break LLDB's
+				// stack walking (see the comment above), so we only add surrounding memory if it is executable. Make
+				// sure we do not under- or overflow (e.g. nullptr, or a very large address)
 				uint64_t start = ip >= SurroundingsRange ? ip - SurroundingsRange : 0;
 				uint64_t end   = ip <= UINT64_MAX - SurroundingsRange ? ip + SurroundingsRange : UINT64_MAX;
 
@@ -642,11 +643,11 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 
 				if (start < regionStart)
 					start = regionStart;
-					
+
 				if (end > regionEnd)
 					end = regionEnd;
 
-				if (ipRegionInfo.prot & MemProtExecute) 
+				if (ipRegionInfo.prot & MemProtExecute)
 					memoryRangesToAdd.InsertAndMergeIfNeeded (start, end - start);
 				else
 					memoryRangesToExclude.InsertAndMergeIfNeeded (start, end - start);
@@ -684,15 +685,15 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 #ifdef __arm64__
 		if (pCrashContext != nullptr && tid == pCrashContext->crashedTID) {
 			// Include some memory around the fault address, so the data the crashing instruction tried to access
-			// is available for post-mortem analysis. Most of the time this memory will be either unmapped (e.g nullptr), or 
-			// already included because the address was on the call stack (see above).
+			// is available for post-mortem analysis. Most of the time this memory will be either unmapped (e.g
+			// nullptr), or already included because the address was on the call stack (see above).
 			uint64_t faultAddress = 0;
 			if (TryGetFaultAddress (es, &faultAddress)) {
 				if (!memoryRangesToExclude.Contains (faultAddress)) {
 					AddFaultAddressSurroundings (memoryRegions, faultAddress, &memoryRangesToAdd);
 				} else {
-					MMD_DEBUGLOG_LINE << "Skipping inclusion of memory around fault address 0x" << std::hex << faultAddress
-									  << std::dec <<", because it's on the exclusion list";
+					MMD_DEBUGLOG_LINE << "Skipping inclusion of memory around fault address 0x" << std::hex
+									  << faultAddress << std::dec << ", because it's on the exclusion list";
 				}
 			}
 		}
