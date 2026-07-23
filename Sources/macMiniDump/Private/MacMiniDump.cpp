@@ -693,9 +693,10 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 					memoryRangesToExclude.InsertAndMergeIfNeeded (start, end - start);
 			}
 
-			// Mark modules as executing if an address corresponding to a module is on a call stack. According to lldb's
-			// code, this is used for some kind of symbol loading optimization. Without this, everything still functions
-			// as intended, and I could not measure a speed difference, but let's be nice and do it anyway.
+			// Mark modules as executing if an address corresponding to a module is on a call stack. This allows for a
+			// symbol loading optimization that is very important for core files, as LLDB will load symbols and binaries
+			// only for such modules, instead of all of them (given they are available locally, or
+			// LLDB_APPLE_DSYMFORUUID_EXECUTABLE is used).
 			pModules->MarkAsExecuting (ip);
 		}
 
