@@ -24,7 +24,11 @@ To make this work, your target process can voluntarily transfer the necessary (s
 
 ## Debugging core files
 
-Use LLDB (or a tool using LLDB, like VS Code) to open core files: `lldb /path/to/executable -c /path/to/corefile`. Note that the executable must be the exact same version as the one used to create the core file, otherwise you won't get correct symbols. Same goes for shared libraries (LLDB's `target.exec-search-paths` setting might be useful here).
+Use LLDB (or a tool using LLDB, like VS Code) to open core files. If you have your binaries locally, you need to specify the main binary, too: `lldb /path/to/executable -c /path/to/corefile`. The binaries must be the exact same version that the core file's "subject process" had, otherwise you won't get correct symbols.
+
+If you rely on the [extension points](https://lldb.llvm.org/use/symbols.html) provided by `DebugSymbols.framework` to locate your binaries, then specifying the main binary's path is not needed: `lldb -c /path/to/corefile`
+
+If you have a binary/symbol locator shell script, LLDB becomes very eager to load binaries and `.dSYM`s, which is slow and unpractical. Instead of setting `DBGShellCommands`, set the `LLDB_APPLE_DSYMFORUUID_EXECUTABLE` environment variable to your script's path temporarily.
 
 ## Building
 
