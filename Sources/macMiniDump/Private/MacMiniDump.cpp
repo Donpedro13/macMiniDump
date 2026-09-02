@@ -32,8 +32,10 @@
 namespace MMD {
 namespace {
 
+#ifdef __arm64__
 // Several pieces of code add memory and surroundings, this constant stores the range of bytes to add (before and after)
 const size_t SurroundingsRange = 256;
+#endif // __arm64__
 
 class DisjointIntervalSet {
 public:
