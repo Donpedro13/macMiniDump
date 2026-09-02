@@ -135,7 +135,7 @@ void AddMemoryAndSurroundingsPointedToByRegisters (const MemoryRegionList&	   me
 	for (size_t i = 0; i < 29; ++i) {
 		MemoryRegionInfo regionInfo;
 		if (!memoryRegions.GetRegionInfoForAddress (threadState.__x[i], &regionInfo))
-			return; // Pointer points to unmapped memory
+			continue; // Pointer points to unmapped memory
 
 		const uint64_t regionStart = regionInfo.vmaddr;
 		const uint64_t regionEnd   = regionInfo.vmaddr + regionInfo.vmsize;
