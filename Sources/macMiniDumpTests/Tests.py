@@ -42,6 +42,7 @@ def DebugProcessWithCoreFile (exe_path: str, core_path: str) -> lldb.SBProcess:
 
 def Init():
     lldb.SBDebugger.Initialize()
+    GetDebugger().HandleCommand("plugin disable platform.webinspector-wasm")
 
 def Deinit():
     lldb.SBDebugger.Terminate()
