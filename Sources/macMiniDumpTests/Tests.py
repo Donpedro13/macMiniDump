@@ -119,6 +119,7 @@ class CoreFileTestExpectation:
     relevant_func_name : Optional[str] = None
     relevant_func_locals : Optional[dict] = None
     relevant_deref_locals : Optional[dict] = None
+    skip_deref_locals_if_optimized : bool = False
     relevant_frame_index : int = 0
     
     def __or__(self, other: 'CoreFileTestExpectation') -> 'CoreFileTestExpectation':
@@ -413,7 +414,13 @@ def VerifyCoreFile(core_path: str, expectation: CoreFileTestExpectation):
                         if var_value != str(expected_value):
                             raise RuntimeError(f"Expected local variable '{var_name}' to have value '{expected_value}', but found '{var_value}'")
 
-                if expectation.relevant_deref_locals is not None:
+                function = frame.GetFunction()
+                skip_deref_locals = (
+                    expectation.skip_deref_locals_if_optimized
+                    and function.IsValid()
+                    and function.GetIsOptimized()
+                )
+                if expectation.relevant_deref_locals is not None and not skip_deref_locals:
                     for var_name, expected_members in expectation.relevant_deref_locals.items():
                         var = frame.FindVariable(var_name)
                         if not var.IsValid():
@@ -468,7 +475,10 @@ operation_expectation_overrides = {
     "CrashNonExecutablePtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True, fault_address_memory_included=False),
     "CrashMisalignedPtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True, fault_address_memory_included=False),
     "CrashReadOnlyPtrWrite": CoreFileTestExpectation(fault_memory_fill_pattern = 0xAB),
-    "CrashNullPtrCallViaHeap": CoreFileTestExpectation(relevant_deref_locals={"pS": {"start": 20250425, "func": 0, "end": 20250425}}),
+    "CrashNullPtrCallViaHeap": CoreFileTestExpectation(
+        relevant_deref_locals={"pS": {"start": 20250425, "func": 0, "end": 20250425}},
+        skip_deref_locals_if_optimized=True,
+    ),
 }
 oop = [True, False]
 background_thread = [True, False]

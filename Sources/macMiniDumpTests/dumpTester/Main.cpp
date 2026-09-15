@@ -129,7 +129,7 @@ NOINLINE bool CrashNullPtrCallViaHeap (const std::string& /*corePath*/)
 		uint64_t end   = 20250425;
 	};
 
-	S* pS = new S ();
+	volatile S* pS = new S ();
 
 	pS->func ();
 
