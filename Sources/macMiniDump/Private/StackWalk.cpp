@@ -1,8 +1,5 @@
 #include "StackWalk.hpp"
 
-#include <mach-o/compact_unwind_encoding.h>
-#include <mach-o/loader.h>
-
 #include <cassert>
 #include <cinttypes>
 
@@ -49,9 +46,7 @@ bool ExceptionMightBeControlTransferRelated (MachOCore::EXC const& exc)
 #endif
 
 #ifdef __arm64__
-bool IsPreviousInstructionSVC ([[maybe_unused]] mach_port_t		  taskPort,
-							   [[maybe_unused]] const ModuleList& moduleList,
-							   [[maybe_unused]] uintptr_t		  instructionPointer)
+bool IsPreviousInstructionSVC (mach_port_t taskPort, uintptr_t instructionPointer)
 {
 	// arm64 instructions are fixed 4-bytes in size
 	constexpr size_t instructionSize = 4;
