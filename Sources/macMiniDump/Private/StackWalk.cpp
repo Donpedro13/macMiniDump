@@ -33,7 +33,7 @@ uint64_t DerefPtr (mach_port_t taskPort, const uint64_t ptr)
 #ifdef __arm64__
 bool ExceptionMightBeControlTransferRelated (MachOCore::EXC const& exc)
 {
-	// Decode exception class from esr; we are interested in instruction abort and data abort
+	// Decode exception class from esr
 	const uint32_t esr			  = exc.exc.__esr;
 	const uint32_t exceptionClass = (esr >> 26) & 0x3F;
 
@@ -41,7 +41,6 @@ bool ExceptionMightBeControlTransferRelated (MachOCore::EXC const& exc)
 	switch (exceptionClass) {
 		case 0x20: // Instruction Abort
 		case 0x22: // PC alignment fault
-		case 0x24: // Data Abort
 			return true;
 		default:
 			return false;
@@ -50,40 +49,6 @@ bool ExceptionMightBeControlTransferRelated (MachOCore::EXC const& exc)
 #endif
 
 #ifdef __arm64__
-bool IsPreviousInstructionBLKind (mach_port_t taskPort, uintptr_t instructionPointer)
-{
-	// arm64 instructions are fixed 4-bytes in size
-	constexpr size_t instructionSize = 4;
-	uint32_t		 instruction;
-	if (!ReadProcessMemoryInto (taskPort, instructionPointer - instructionSize, &instruction)) {
-		MMD_DEBUGLOG_LINE << "Failed to read memory at " << instructionPointer - instructionSize;
-
-		return false;
-	}
-
-	// BL: bits [31:26]; see:
-	// https://developer.arm.com/documentation/ddi0602/2024-09/Base-Instructions/BL--Branch-with-link-
-	const uint32_t blMask	= 0b111111;
-	const uint32_t blOpcode = (instruction >> 26) & blMask;
-	if (blOpcode == 0b100101)
-		return true;
-
-	// BLR: bits [31:10]; see:
-	// https://developer.arm.com/documentation/ddi0602/2024-09/Base-Instructions/BLR--Branch-with-link-to-register-
-	const uint32_t blrMask	 = 0b1111111111111111111111;
-	const uint32_t blrOpcode = (instruction >> 10) & blrMask;
-
-	if (blrOpcode == 0b1101011000111111000000)
-		return true;
-
-	// BLRA*: bits [31:11], where bit 24 (Z) is either 0 or 1 see:
-	// https://developer.arm.com/documentation/ddi0602/2024-09/Base-Instructions/BLRAA--BLRAAZ--BLRAB--BLRABZ--Branch-with-link-to-register--with-pointer-authentication-
-	const uint32_t blraMask	  = 0b111111101111111111111;
-	const uint32_t blraOpcode = (instruction >> 11) & blraMask;
-
-	return blraOpcode == 0b110101100011111100001;
-}
-
 bool IsPreviousInstructionSVC ([[maybe_unused]] mach_port_t		  taskPort,
 							   [[maybe_unused]] const ModuleList& moduleList,
 							   [[maybe_unused]] uintptr_t		  instructionPointer)
@@ -119,7 +84,7 @@ Vector<uint64_t> WalkStack (mach_port_t								 taskPort,
 	const uintptr_t				 basePointer		= pointers.BasePointer ().AsUIntPtr ();
 	const uintptr_t				 instructionPointer = pointers.InstructionPointer ().AsUIntPtr ();
 
-	// Seems to happen in weird scenarios (LLDB is also incapable of stackwalks for these threads); maybe when a thread 
+	// Seems to happen in weird scenarios (LLDB is also incapable of stackwalks for these threads); maybe when a thread
 	//   is being launched/stopped?
 	if (basePointer == 0) {
 		MMD_DEBUGLOG_LINE << "Skipping stack walk for thread: the base pointer is 0!";
@@ -142,10 +107,10 @@ Vector<uint64_t> WalkStack (mach_port_t								 taskPort,
 	//					 2.) frameless (~leaf) functions
 	// These cases most likely would result in a function being skipped in the stack trace.
 
-	// 1.) is e.g. when an invalid pointer is call'd, the call instruction "starts" building a new stack frame, but the
-	// frame pointer hasn't been updated yet, because the function prologue hasn't executed. There are a dozen
-	// variations of this, such as partially executed prologues and epilogues. A 100% correct solution would need a
-	// full-blown stack unwinding library with parsing compact and DWARF unwind info, instruction emulation, etc.
+	// 1.) is e.g. when an invalid pointer is call'd, the frame pointer hasn't been updated, because the function
+	// prologue hasn't executed. There are a dozen variations of this, such as partially executed prologues and
+	// epilogues. A 100% correct solution would need a full-blown stack unwinding library with parsing compact and DWARF
+	// unwind info, instruction emulation, etc.
 
 	// For 2.), we parse the compact unwind info (if present) for the top instruction pointer to see if the function is
 	// frameless. We also handle a tiny edge case: syscall wrappers (see the explanation below)
@@ -157,7 +122,7 @@ Vector<uint64_t> WalkStack (mach_port_t								 taskPort,
 			MMD_DEBUGLOG_LINE << "Instruction pointer points to not mapped or non-executable memory: "
 							  << instructionPointer;
 
-			topPCNoStackFrame = IsPreviousInstructionBLKind (taskPort, gpr.gpr.__lr);
+			topPCNoStackFrame = true;
 		}
 	}
 
