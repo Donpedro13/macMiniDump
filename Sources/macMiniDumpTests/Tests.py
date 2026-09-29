@@ -469,8 +469,9 @@ def add_testcase(fixture, name, operation, oop: bool, background_thread: bool, e
         testcases[fixture] = []
     testcases[fixture].append({"name": name, "operation": operation, "oop": oop, "background_thread": background_thread, "expectation": expectation})
 
-operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashReadOnlyPtrWrite", "CrashInvalidPtrWriteFromObjC", "CrashNullPtrCall", "CrashNullPtrCallViaHeap", "CrashInvalidPtrCall", "CrashNonExecutablePtrCall", "CrashMisalignedPtrCall", "AbortPureVirtualCall", "AbortUnhandledObjCException"]
+operations = ["CreateCore", "CreateCoreFromC", "CrashInvalidPtrWrite", "CrashFramelessFunctionWithStackUsageInvalidPtrWrite", "CrashReadOnlyPtrWrite", "CrashInvalidPtrWriteFromObjC", "CrashNullPtrCall", "CrashNullPtrCallViaHeap", "CrashInvalidPtrCall", "CrashNonExecutablePtrCall", "CrashMisalignedPtrCall", "AbortPureVirtualCall", "AbortUnhandledObjCException"]
 operation_expectation_overrides = {
+    "CrashFramelessFunctionWithStackUsageInvalidPtrWrite": CoreFileTestExpectation(relevant_func_locals={}),
     "CrashInvalidPtrWriteFromObjC": CoreFileTestExpectation(relevant_func_name="crashInvalidPtrWrite"),
     "CrashNonExecutablePtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True, fault_address_memory_included=False),
     "CrashMisalignedPtrCall": CoreFileTestExpectation(crash_top_pc_memory_excluded = True, fault_address_memory_included=False),

@@ -86,6 +86,22 @@ NOINLINE bool CrashInvalidPtrWrite (const std::string& /*corePath*/)
 	return false; // Unreachable
 }
 
+// Even though this function is frameless, it uses a nonnegligible amount of stack space.
+// By default, clang would insert a canary with a potential call to __stack_chk_fail, so it would become non-leaf and
+// non-frameless. To avoid this, we explicitly disable the stack protector for this function.
+NOINLINE bool __attribute__ ((no_stack_protector))
+CrashFramelessFunctionWithStackUsageInvalidPtrWrite (const std::string& /*corePath*/)
+{
+	volatile char stackSpace[256];
+	for (size_t i = 0; i < sizeof stackSpace; ++i)
+		stackSpace[i] = FillPattern;
+
+	volatile int* p = (int*) InvalidPtr;
+	*p				= 42;
+
+	return false; // Unreachable
+}
+
 NOINLINE bool CrashReadOnlyPtrWrite (const std::string& /*corePath*/)
 {
 	[[maybe_unused]] volatile int local = 20250425;
@@ -466,6 +482,7 @@ std::map<std::string, std::function<bool (const std::string&)>> g_operations = {
 	{ "CorruptHeapThenCreateCoreFile", CorruptHeapThenCreateCoreFile },
 	{ "CreateCoreFromC", CreateCoreFromC },
 	{ "CrashInvalidPtrWrite", CrashInvalidPtrWrite },
+	{ "CrashFramelessFunctionWithStackUsageInvalidPtrWrite", CrashFramelessFunctionWithStackUsageInvalidPtrWrite },
 	{ "CrashReadOnlyPtrWrite", CrashReadOnlyPtrWrite },
 	{ "CrashInvalidPtrWriteFromObjC", CrashInvalidPtrWriteFromObjC },
 	{ "CrashNullPtrCall", CrashNullPtrCall },
