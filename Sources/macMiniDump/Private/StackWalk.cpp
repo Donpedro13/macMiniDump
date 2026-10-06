@@ -132,7 +132,7 @@ Vector<uint64_t> WalkStack (mach_port_t								 taskPort,
 		// - syscalls themselves take a non-trivial amount of time
 		// - quite a few syscalls are for waiting on something
 		if (frameLookupResult == StackFrameLookupResult::Unknown) {
-			frameLookupResult = IsPreviousInstructionSVC (taskPort, moduleList, instructionPointer) ?
+			frameLookupResult = IsPreviousInstructionSVC (taskPort, instructionPointer) ?
 									StackFrameLookupResult::Frameless :
 									frameLookupResult;
 		}
