@@ -1,5 +1,7 @@
 # macMiniDump
 
+[![BuyMeACoffee](https://raw.githubusercontent.com/pachadotdev/buymeacoffee-badges/main/bmc-yellow.svg)](https://buymeacoffee.com/Donpedro13)
+
 macMiniDump is a static library providing programmatic access to creating minimal size, post-mortem debuggable memory dumps (core files) on macOS. In other words, it's [`MiniDumpWriteDump`](https://learn.microsoft.com/en-us/windows/win32/api/minidumpapiset/nf-minidumpapiset-minidumpwritedump), but for macOS.
 
 ## Usage
