@@ -545,7 +545,8 @@ for op in operations:
 
             add_testcase(corefile_test_fixture, test_name, op, is_oop, is_background, expectation)
 
-def RunTests():
+def RunTests() -> int:
+    n_failed = 0
     for fixture, tests in testcases.items():
         for test in tests:
             test_name = test['name']
@@ -562,11 +563,14 @@ def RunTests():
                 if isinstance(e, (SyntaxError, TypeError)):
                     raise
                 print(f"\t[FAILED] {e}")
+                n_failed += 1
                 continue
             finally:
                 fixture.Teardown()
 
             print(f"\t[OK]")
+
+    return n_failed
 
 
 def Main():
@@ -578,8 +582,12 @@ def Main():
     dumpTester_path = args.dumpTester_path
     
     Init()
-    RunTests()
+    n_failed = RunTests()
     Deinit()
+
+    if n_failed > 0:
+        print(f"{n_failed} test(s) failed")
+        sys.exit(1)
 
 if __name__ == "__main__":
     Main()

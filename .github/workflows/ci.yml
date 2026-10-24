@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ci-setup]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build (${{ matrix.arch }}, ${{ matrix.config }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
+        config: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        if: matrix.arch == 'arm64'
+        env:
+          PYTHONUNBUFFERED: "1"
+        # Tests.py needs Xcode's python3, which ships with the LLDB bindings
+        run: '"$(xcrun -f python3)" Sources/macMiniDumpTests/Tests.py Binaries/dumpTester'
+
+  format:
+    name: format
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install clang-format
+        run: brew install clang-format
+
+      - name: Check formatting of changed files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE"
+            head="$PR_HEAD"
+          else
+            head="$GITHUB_SHA"
+            base="${PUSH_BEFORE:-}"
+            if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+              base="$(git merge-base origin/main "$head")"
+            fi
+          fi
+          clang-format --version
+          echo "Checking files changed in $base...$head"
+          git diff --name-only --diff-filter=ACMR "$base...$head" -- '*.c' '*.cpp' '*.h' '*.hpp' '*.inl'
+          git diff -z --name-only --diff-filter=ACMR "$base...$head" -- '*.c' '*.cpp' '*.h' '*.hpp' '*.inl' \
+            | xargs -0 clang-format --dry-run --Werror
+
+  ci-success:
+    name: ci-success
+    if: always()
+    needs: [build-test, format]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required jobs succeeded
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1
