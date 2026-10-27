@@ -602,16 +602,12 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 		x86_thread_state64_t		ts;
 		x86_exception_state64_t		es;
 		mach_msg_type_number_t		gprCount  = x86_THREAD_STATE64_COUNT;
-		mach_msg_type_number_t		excCount  = x86_EXCEPTION_STATE64_COUNT;
 		const thread_state_flavor_t gprFlavor = x86_THREAD_STATE64;
-		const thread_state_flavor_t excFlavor = x86_EXCEPTION_STATE64;
 #elif defined __arm64__
 		arm_thread_state64_t		ts;
 		arm_exception_state64_t		es;
 		mach_msg_type_number_t		gprCount  = ARM_THREAD_STATE64_COUNT;
-		mach_msg_type_number_t		excCount  = ARM_EXCEPTION_STATE64_COUNT;
 		const thread_state_flavor_t gprFlavor = ARM_THREAD_STATE64;
-		const thread_state_flavor_t excFlavor = ARM_EXCEPTION_STATE64;
 #endif
 
 		// If the thread is the crashing one, start stackwalking etc. from the provided crash context
@@ -639,8 +635,15 @@ bool AddThreadsToCore (mach_port_t			 taskPort,
 			if (thread_get_state (threadRefs[i].Get (), gprFlavor, (thread_state_t) &ts, &gprCount) != KERN_SUCCESS)
 				continue;
 
-			if (thread_get_state (threadRefs[i].Get (), excFlavor, (thread_state_t) &es, &excCount) != KERN_SUCCESS)
-				continue;
+			// Instead of querying the exception state for non-crashing threads, we zero out all values.
+
+			// This often times contains "leftover values", as the kernel does not seem to be clearing these registers.
+			// Most of the time benign values are found here, like an exception caused by a previous SVC instruction
+			// (transition to kernel mode). However, sometimes values for instruction and data faults are present
+			// (maybe handled page faults?), which are practically undistinguishable from "regular crashes". To make
+			// things worse, LLDB also displays these threads as "stopped due to an exception", which is both
+			// confusing and makes tests rarely fail randomly (an unexpected thread seems to have a crash).
+			memset (&es, 0, sizeof es);
 		}
 
 		MachOCore::GPR gpr;
