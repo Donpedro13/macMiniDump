@@ -309,6 +309,10 @@ void SignalHandler (int /*sig*/, siginfo_t* /*sigInfo*/, void* context)
 	CreateCoreFileImpl (mach_task_self (), g_corePath, &crashContext);
 
 	kill (getpid (), SIGKILL);
+
+	// Sending SIGKILL is not synchronous, so we wait until we are finally terminated...
+	for (;;)
+		pause ();
 }
 
 void SignalHandlerForOOPWorker (int /*sig*/, siginfo_t* /*sigInfo*/, void* context)
@@ -325,6 +329,10 @@ void SignalHandlerForOOPWorker (int /*sig*/, siginfo_t* /*sigInfo*/, void* conte
 
 	kill (getpid (), SIGKILL); // Ideally, this is never reached, because the parent should kill us after it has written
 							   // a core file
+
+	// Sending SIGKILL is not synchronous, so we wait until we are finally terminated...
+	for (;;)
+		pause ();
 }
 
 bool SetupSignalHandler (void (*handler) (int, siginfo_t*, void*))
