@@ -37,6 +37,11 @@ If you have a binary/symbol locator shell script, LLDB becomes very eager to loa
 
 The project is self-contained: no special environment, no third-party dependencies needed. The only requirements for building are a working compiler and CMake.
 
+In VS Code, choose `ASAN`, `MSAN`, `UBSAN`, or `TSAN` from **CMake: Select Variant**.
+With a single-config generator such as Ninja, these optimized configurations can also
+be selected with `-DCMAKE_BUILD_TYPE=ASAN` (or the corresponding configuration name).
+`MSAN` requires a toolchain with MemorySanitizer support, which Apple Clang does not provide.
+
 ## Limitations
 
 * The set of memory regions included in core files is currently not configurable, only a minimum amount is included necessary for stack backtraces to work.

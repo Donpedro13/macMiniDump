@@ -1,0 +1,12 @@
+{
+  "buildType": {
+    "default": "debug",
+    "choices": {
+      "debug": { "short": "Debug", "buildType": "Debug" },
+      "reldeb": { "short": "RelWithDebInfo", "buildType": "RelWithDebInfo" },
+      "asan": { "short": "ASAN", "long": "AddressSanitizer", "buildType": "ASAN" },
+      "ubsan": { "short": "UBSAN", "long": "UndefinedBehaviorSanitizer", "buildType": "UBSAN" },
+      "tsan": { "short": "TSAN", "long": "ThreadSanitizer", "buildType": "TSAN" }
+    }
+  }
+}
