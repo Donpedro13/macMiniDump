@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (${{ matrix.arch }}, ${{ matrix.config }})
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
+        config: [Debug, RelWithDebInfo]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # Debug info lives in the .o files under build/, which is not uploaded
+      - name: Generate dSYM
+        run: dsymutil Binaries/dumpTester
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.arch }}-${{ matrix.config }}
+          path: Binaries/
+          if-no-files-found: error
+          retention-days: 1
+
+  test:
+    name: test (${{ matrix.arch }}, ${{ matrix.config }})
+    needs: build
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64]
+        config: [Debug, RelWithDebInfo]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries-${{ matrix.arch }}-${{ matrix.config }}
+          path: Binaries/
+
+      # Artifacts are zipped, so the executable bit is lost
+      - name: Restore executable permissions
+        run: chmod +x Binaries/dumpTester
+
+      - name: Test
+        env:
+          PYTHONUNBUFFERED: "1"
+        # Tests.py needs Xcode's python3, which ships with the LLDB bindings
+        run: '"$(xcrun -f python3)" Sources/macMiniDumpTests/Tests.py Binaries/dumpTester'
+
+  format:
+    name: format
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install clang-format
+        run: brew install clang-format
+
+      - name: Check formatting of changed files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE"
+            head="$PR_HEAD"
+          else
+            head="$GITHUB_SHA"
+            base="${PUSH_BEFORE:-}"
+            if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+              base="$(git merge-base origin/main "$head")"
+            fi
+          fi
+          clang-format --version
+          echo "Checking files changed in $base...$head"
+          git diff --name-only --diff-filter=ACMR "$base...$head" -- '*.c' '*.cpp' '*.h' '*.hpp' '*.inl'
+          git diff -z --name-only --diff-filter=ACMR "$base...$head" -- '*.c' '*.cpp' '*.h' '*.hpp' '*.inl' \
+            | xargs -0 clang-format --dry-run --Werror
